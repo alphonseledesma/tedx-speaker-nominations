@@ -14,7 +14,8 @@
   --field-line: rgba(239, 232, 225, .18);
   --err: #ff7f75;
 
-  --font: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font: "Plus Jakarta Sans", "Helvetica Neue", Arial, sans-serif;        /* body text */
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;                 /* headlines */
   --column: 44rem;
   --gutter: clamp(20px, 5vw, 40px);
 }
@@ -36,7 +37,6 @@ body {
   font-family: var(--font);
   font-size: 17px;
   line-height: 1.65;
-  font-variation-settings: "wdth" 100;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -226,6 +226,7 @@ body {
 
 .marquee {
   margin: 0 0 clamp(48px, 8vh, 80px);
+  font-family: var(--display);
   font-size: clamp(60px, 13vw, 132px);
   font-weight: 800;
   font-variation-settings: "wdth" 62;
@@ -243,6 +244,7 @@ body {
   align-items: baseline;
 }
 .defs dt {
+  font-family: var(--display);
   font-size: 30px;
   font-weight: 900;
   font-variation-settings: "wdth" 80;
@@ -261,6 +263,7 @@ body {
 .hook {
   margin: 0 0 26px;
   font-size: clamp(28px, 4.6vw, 46px);
+  font-family: var(--display);
   font-weight: 300;
   font-variation-settings: "wdth" 118;
   line-height: 1.16;
@@ -331,6 +334,7 @@ body {
 .panel h2,
 .form-head h2 {
   margin: 0 0 18px;
+  font-family: var(--display);
   font-size: clamp(44px, 8vw, 72px);
   font-weight: 800;
   font-variation-settings: "wdth" 62;
@@ -519,7 +523,6 @@ textarea:-webkit-autofill {
   margin: 40px 0 10px;
   font-size: 22px;
   font-weight: 600;
-  font-variation-settings: "wdth" 100;
   line-height: 1.3;
   color: #fff;
 }

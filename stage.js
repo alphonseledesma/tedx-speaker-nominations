@@ -11,14 +11,9 @@
   var openingDone = false;
   var skipEvents = ['keydown', 'pointerdown', 'wheel', 'touchstart'];
 
-  function seenThisVisit() {
-    try { return sessionStorage.getItem('tedx-opening-seen') === '1'; } catch (e) { return false; }
-  }
-
   function endOpening() {
     if (openingDone) return;
     openingDone = true;
-    try { sessionStorage.setItem('tedx-opening-seen', '1'); } catch (e) { /* private mode */ }
     skipEvents.forEach(function (ev) { window.removeEventListener(ev, endOpening, true); });
     html.classList.remove('is-opening');
     if (!opening) return;
@@ -26,7 +21,8 @@
     setTimeout(function () { if (opening && opening.parentNode) opening.parentNode.removeChild(opening); }, 1050);
   }
 
-  if (!opening || reduce || seenThisVisit()) {
+  // The opening plays on every page load; any key, click or tap skips it.
+  if (!opening || reduce) {
     if (opening && opening.parentNode) opening.parentNode.removeChild(opening);
     openingDone = true;
   } else {
