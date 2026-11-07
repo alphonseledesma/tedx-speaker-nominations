@@ -404,6 +404,7 @@
       shape: 'pill',
       text: 'continue_with',
       logo_alignment: 'left',
+      locale: 'en',  // always English, whatever the visitor's phone language is
       width: Math.min(320, Math.max(200, target.clientWidth || 320)),
     });
   }
