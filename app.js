@@ -14,7 +14,10 @@
     user: null,
     pendingSubmit: false,
     busy: false,
+    started: false,  // true once the visitor clicks "Begin nomination"
+    queue: [],       // screens waiting for the introduction to end
   };
+  var REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var controls = {};
   var keys = [];
 
@@ -64,21 +67,45 @@
     show('loading', !!text);
   }
   function fatal(message) {
-    setLoading('');
-    $('fatalText').textContent = message;
-    show('fatal', true);
+    onStage(function () {
+      setLoading('');
+      $('fatalText').textContent = message;
+      show('fatal', true);
+    });
   }
 
+  // The introduction is written in index.html. The Sheet only sets the tab title and deadline.
   function renderHero(cfg) {
-    if (cfg.title) {
-      $('title').textContent = cfg.title;
-      document.title = cfg.title;
-    }
-    $('intro').textContent = cfg.intro || '';
+    if (cfg.title) document.title = cfg.title;
     if (cfg.deadlineText && cfg.open) {
       $('deadline').textContent = 'Nominations close ' + cfg.deadlineText;
       show('deadline', true);
     }
+  }
+
+  // ---------- Introduction → form ----------
+  // Screens requested before the visitor clicks "Begin nomination" wait here.
+  function onStage(fn) {
+    if (state.started) fn();
+    else state.queue.push(fn);
+  }
+
+  function begin() {
+    if (state.started || $('beginBtn').disabled) return;
+    $('beginBtn').disabled = true;
+    var intro = $('introScene');
+    intro.classList.add('is-leaving');
+    setTimeout(function () {
+      intro.hidden = true;
+      intro.classList.remove('is-leaving');
+      window.scrollTo(0, 0);
+      state.started = true;
+      document.dispatchEvent(new CustomEvent('stage:begin'));
+      var waiting = state.queue;
+      state.queue = [];
+      if (!waiting.length) setLoading('Setting the stage...');
+      waiting.forEach(function (fn) { fn(); });
+    }, REDUCED_MOTION ? 0 : 700);
   }
 
   function renderAccount() {
@@ -94,7 +121,7 @@
     list.forEach(function (n) {
       var li = el('li');
       li.appendChild(el('span', 'mine-name', n.name || 'Unnamed nominee'));
-      li.appendChild(el('span', 'mine-meta', n.id + (n.submittedAt ? ' · ' + n.submittedAt : '')));
+      li.appendChild(el('span', 'mine-meta', n.id + (n.submittedAt ? ', sent ' + n.submittedAt : '')));
       ul.appendChild(li);
     });
     show('mine', list.length > 0);
@@ -113,13 +140,13 @@
     box.textContent = '';
     controls = {};
     keys = [];
-    questions.forEach(function (q, i) { buildQuestion(box, q, i); });
+    questions.forEach(function (q, i) { buildQuestion(box, q, i, questions.length); });
   }
 
-  function buildQuestion(box, q, i) {
+  function buildQuestion(box, q, i, total) {
     var id = 'f-' + q.key;
     var wrap = el('div', 'q');
-    wrap.appendChild(el('div', 'q-num', (i < 9 ? '0' : '') + (i + 1)));
+    wrap.appendChild(el('div', 'q-num', (i + 1) + ' of ' + total));
 
     var label = el('label', 'q-label', q.label);
     label.htmlFor = id;
@@ -372,7 +399,7 @@
     target.textContent = '';
     google.accounts.id.renderButton(target, {
       type: 'standard',
-      theme: 'filled_black',
+      theme: 'outline',
       size: 'large',
       shape: 'pill',
       text: 'continue_with',
@@ -421,6 +448,7 @@
       show('done', false);
       if (formIsEmpty()) restoreDraft();
       show('nomForm', true);
+      if (!formVisible) window.scrollTo({ top: 0, behavior: REDUCED_MOTION ? 'auto' : 'smooth' });
 
       state.pendingSubmit = false;
       if (wasPending && previousEmail === res.email) submit();
@@ -550,6 +578,7 @@
     form.addEventListener('input', onFieldInput);
     form.addEventListener('change', onFieldInput);
     $('switchBtn').addEventListener('click', switchAccount);
+    $('beginBtn').addEventListener('click', begin);
     $('anotherBtn').addEventListener('click', nominateAnother);
     window.addEventListener('pagehide', saveDraftNow);
 
@@ -561,14 +590,16 @@
       if (!cfg || !cfg.ok) throw new Error((cfg && cfg.message) || 'Bad config response');
       state.config = cfg;
       renderHero(cfg);
-      setLoading('');
-      if (!cfg.open) {
-        $('closedMessage').textContent = cfg.closedMessage || '';
-        return show('closed', true);
-      }
-      buildForm(cfg.questions || []);
-      show('signin', true);
-      whenGsiReady(initGsi);
+      if (cfg.open) buildForm(cfg.questions || []);
+      onStage(function () {
+        setLoading('');
+        if (!cfg.open) {
+          $('closedMessage').textContent = cfg.closedMessage || '';
+          return show('closed', true);
+        }
+        show('signin', true);
+        whenGsiReady(initGsi);
+      });
     }).catch(function (err) {
       console.error(err);
       fatal('We could not load the nomination form. Please refresh the page in a minute.');

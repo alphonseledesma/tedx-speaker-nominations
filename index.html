@@ -2,75 +2,126 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TEDx Speaker Nominations</title>
-  <meta name="description" content="Know someone whose work deserves a stage? Nominate them as a speaker.">
-  <meta property="og:title" content="TEDx Speaker Nominations">
-  <meta property="og:description" content="Know someone whose work deserves a stage? Nominate them as a speaker.">
-  <meta name="theme-color" content="#0b0b0b">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>TEDxAteneodeManilaU Speaker Nominations</title>
+  <meta name="description" content="Know someone whose ideas changed how you see things? Nominate them to speak at TEDxAteneodeManilaU.">
+  <meta property="og:title" content="TEDxAteneodeManilaU Speaker Nominations">
+  <meta property="og:description" content="Every great talk begins with someone noticing something that others haven't. Nominate them to speak.">
+  <meta name="theme-color" content="#060505">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 
   <script src="config.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="stage.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
-  <header class="hero">
-    <div class="hero-inner">
-      <p class="eyebrow">Nominate a speaker</p>
-      <h1 id="title">TEDx Speaker Nominations</h1>
-      <p class="intro" id="intro"></p>
-      <p class="deadline" id="deadline" hidden></p>
+  <!-- Background: canvas dust and rings, stage beam, cursor spotlight, vignette -->
+  <div class="stage" aria-hidden="true">
+    <canvas id="stageCanvas"></canvas>
+    <div class="beam"></div>
+    <div class="spot" id="spot"></div>
+    <div class="vignette"></div>
+  </div>
+  <div class="grain" aria-hidden="true"></div>
+
+  <!-- Opening: plays once per visit, skipped with any key, click or tap -->
+  <div class="opening" id="opening" aria-hidden="true">
+    <div class="opening-light"></div>
+    <div class="opening-inner">
+      <img class="opening-logo" src="assets/tedx-ateneodemanilau-stacked-white.png" alt="" width="1000" height="227">
+      <p class="opening-line">Speaker nominations</p>
     </div>
+    <p class="opening-skip">Tap or press any key to skip</p>
+  </div>
+
+  <header class="masthead">
+    <a class="brand" href="./">
+      <img src="assets/tedx-ateneodemanilau-white.png" alt="TEDxAteneodeManilaU" width="900" height="67">
+    </a>
   </header>
 
-  <main class="shell">
-    <section class="card status" id="loading" aria-live="polite">
-      <span class="spinner" aria-hidden="true"></span>
-      <span id="loadingText">Loading the form...</span>
+  <main class="theater" id="main">
+
+    <!-- Introduction -->
+    <section class="scene intro" id="introScene" aria-labelledby="introTitle">
+      <p class="kicker">Introduction</p>
+      <h1 class="marquee" id="introTitle">Speaker nominations</h1>
+
+      <dl class="defs">
+        <div>
+          <dt>TED</dt>
+          <dd>TED is a nonprofit, nonpartisan organization dedicated to discovering, debating and spreading ideas that spark conversation, deepen understanding and drive meaningful change.</dd>
+        </div>
+        <div>
+          <dt>TED<sup>x</sup></dt>
+          <dd>In the spirit of discovering and spreading ideas, TEDx is a program of local, self-organized events that bring people together to share a TED-like experience. At a TEDx event, TED Talks video and live speakers combine to spark deep discussion and connection. These local, self-organized events are branded TEDx, where x = independently organized TED event. The TED Conference provides general guidance for the TEDx program, but individual TEDx events are self-organized. (Subject to certain rules and regulations.)</dd>
+        </div>
+      </dl>
+
+      <div class="invite">
+        <p class="hook" id="hook">Every great talk begins with someone noticing something that others haven&rsquo;t.</p>
+        <p>Do you know someone like that? Nominate them to speak at TEDxAteneodeManilaU. Whether they&rsquo;re a student, a professor, a craftsman, or a mentor you&rsquo;ve learned from, if their ideas changed how you see things, we&rsquo;d love to hear about them.</p>
+      </div>
+
+      <div class="cta-row">
+        <button type="button" class="btn" id="beginBtn">Begin nomination</button>
+        <p class="deadline" id="deadline" hidden></p>
+      </div>
     </section>
 
-    <section class="card" id="fatal" hidden>
-      <h2>Something went wrong</h2>
+    <!-- States the form moves through -->
+    <section class="scene status" id="loading" hidden aria-live="polite">
+      <span class="pulse" aria-hidden="true"></span>
+      <span id="loadingText">Setting the stage...</span>
+    </section>
+
+    <section class="scene panel" id="fatal" hidden>
+      <h2>The form didn&rsquo;t load</h2>
       <p id="fatalText"></p>
     </section>
 
-    <section class="card" id="closed" hidden>
+    <section class="scene panel" id="closed" hidden>
       <h2>Nominations are closed</h2>
       <p id="closedMessage"></p>
     </section>
 
-    <section class="card signin" id="signin" hidden>
+    <section class="scene panel signin" id="signin" hidden>
       <h2>Sign in to nominate</h2>
-      <p>Sign in with any Google account, such as Gmail or a school or work account. It confirms each nomination comes from a real person, and we send you a copy of your answers.</p>
+      <p>Use any Google account, such as Gmail or your school account. Signing in confirms each nomination comes from a real person, and we&rsquo;ll send you a copy of your answers.</p>
       <div class="gsi" id="gsiButton"></div>
       <p class="field-error" id="signinError" role="alert"></p>
     </section>
 
-    <div class="account" id="account" hidden>
+    <div class="scene account" id="account" hidden>
       <span>Signed in as <strong id="who"></strong></span>
       <button type="button" class="link" id="switchBtn">Switch account</button>
     </div>
 
-    <section class="card mine" id="mine" hidden>
-      <h2>Your nominations</h2>
+    <section class="scene mine" id="mine" hidden>
+      <h3>Your nominations</h3>
       <ul id="mineList"></ul>
     </section>
 
-    <section class="card" id="limitNotice" hidden>
+    <section class="scene panel" id="limitNotice" hidden>
       <h2 id="limitTitle"></h2>
       <p id="limitText"></p>
     </section>
 
-    <form class="card" id="nomForm" novalidate hidden>
+    <form class="scene nomination" id="nomForm" novalidate hidden>
+      <header class="form-head">
+        <h2>Your nomination</h2>
+        <p>Questions marked <span class="req">*</span> are required. While you write, your answers are saved as a draft on this device.</p>
+      </header>
+
       <div id="fields"></div>
 
       <div class="reauth" id="reauth" hidden>
-        <p><strong>Please sign in again to submit.</strong> Your sign-in expired while you were writing. Your answers are still here.</p>
+        <p><strong>Sign in again to submit.</strong> Your sign-in expired while you were writing. Your answers are still here.</p>
         <div class="gsi" id="gsiReauth"></div>
       </div>
 
@@ -81,8 +132,7 @@
       <p class="form-error" id="formError" role="alert"></p>
     </form>
 
-    <section class="card done" id="done" hidden tabindex="-1">
-      <p class="eyebrow">Nomination received</p>
+    <section class="scene panel done" id="done" hidden tabindex="-1">
       <h2 id="doneHeading"></h2>
       <p id="doneMessage"></p>
       <p class="ref">Reference number <strong id="doneRef"></strong></p>
@@ -90,15 +140,15 @@
     </section>
 
     <noscript>
-      <section class="card">
-        <h2>JavaScript is turned off</h2>
-        <p>This form needs JavaScript to sign you in. Please turn it on and reload the page.</p>
+      <section class="panel">
+        <h2>Turn on JavaScript</h2>
+        <p>This form needs JavaScript to sign you in. Turn it on, then reload the page.</p>
       </section>
     </noscript>
   </main>
 
   <footer class="foot">
-    <p>Nominations are read by the event's speaker committee and used only to review and contact speakers. <a href="privacy.html">Privacy policy</a></p>
+    <p>This independent TEDx event is operated under license from TED. <a href="privacy.html">Privacy policy</a></p>
   </footer>
 </body>
 </html>

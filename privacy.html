@@ -2,39 +2,38 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Privacy Policy · TEDx Speaker Nominations</title>
-  <meta name="description" content="How the TEDx Speaker Nominations form uses your information.">
-  <meta name="theme-color" content="#0b0b0b">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Privacy policy, TEDxAteneodeManilaU Speaker Nominations</title>
+  <meta name="description" content="How the TEDxAteneodeManilaU speaker nomination form uses your information.">
+  <meta name="theme-color" content="#060505">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
-  <style>
-    .policy h2 { margin-top: 28px; font-size: 18px; }
-    .policy h2:first-child { margin-top: 0; }
-    .policy ul { margin: 0 0 12px; padding-left: 20px; }
-    .policy li { margin-bottom: 6px; }
-    .policy a { color: var(--ink); text-underline-offset: 3px; }
-    .back { display: inline-block; margin-bottom: 16px; color: var(--ink); text-underline-offset: 3px; font-size: 14px; }
-  </style>
+  <script src="stage.js" defer></script>
 </head>
 <body>
-  <header class="hero">
-    <div class="hero-inner">
-      <p class="eyebrow">Privacy policy</p>
-      <h1>TEDx Speaker Nominations</h1>
-      <p class="intro">How we use the information you share when you nominate a speaker.</p>
-      <p class="deadline">Last updated November 7, 2026</p>
-    </div>
+  <div class="stage" aria-hidden="true">
+    <canvas id="stageCanvas"></canvas>
+    <div class="beam"></div>
+    <div class="spot" id="spot"></div>
+    <div class="vignette"></div>
+  </div>
+  <div class="grain" aria-hidden="true"></div>
+
+  <header class="masthead">
+    <a class="brand" href="./">
+      <img src="assets/tedx-ateneodemanilau-white.png" alt="TEDxAteneodeManilaU, back to the nomination form" width="900" height="67">
+    </a>
   </header>
 
-  <main class="shell">
-    <a class="back" href="./">Back to the nomination form</a>
+  <main class="theater">
+    <article class="panel policy">
+      <h1 class="marquee">Privacy policy</h1>
+      <p class="policy-updated">How we use what you share when you nominate a speaker. Last updated November 7, 2026.</p>
 
-    <article class="card policy">
       <h2>Who we are</h2>
-      <p>This form is run by the organizing team of [EVENT NAME], an independently organized TEDx event, to collect speaker nominations from the public.</p>
+      <p>This form is run by the organizing team of TEDxAteneodeManilaU, an independently organized TEDx event, to collect speaker nominations from the public.</p>
 
       <h2>What we collect</h2>
       <ul>
@@ -62,7 +61,9 @@
       <p>To see, correct or delete a nomination you sent, email us at [CONTACT EMAIL] from the account you used to nominate. If you are a nominee and want your details removed, email us too.</p>
 
       <h2>Contact</h2>
-      <p>[EVENT NAME] organizing team, [CONTACT EMAIL]</p>
+      <p>TEDxAteneodeManilaU organizing team, [CONTACT EMAIL]</p>
+
+      <p><a href="./">Back to the nomination form</a></p>
     </article>
   </main>
 
