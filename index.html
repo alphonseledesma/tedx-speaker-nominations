@@ -14,6 +14,14 @@
   <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Plus+Jakarta+Sans:wght@300..700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 
+  <script>
+    // Hide the page from the first instant while the opening plays (stage.js shows it again).
+    // The timer is a safety net in case a script fails to load.
+    if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      document.documentElement.classList.add('is-opening');
+      setTimeout(function () { document.documentElement.classList.remove('is-opening'); }, 10000);
+    }
+  </script>
   <script src="config.js"></script>
   <script src="https://accounts.google.com/gsi/client?hl=en" async defer></script>
   <script src="stage.js" defer></script>
@@ -29,12 +37,15 @@
   </div>
   <div class="grain" aria-hidden="true"></div>
 
-  <!-- Opening: plays once per visit, skipped with any key, click or tap -->
+  <!-- Opening: words in the dark, a spotlight searches the stage and finds the logo.
+       Plays on every visit; any key, click or tap skips it. -->
   <div class="opening" id="opening" aria-hidden="true">
+    <div class="opening-beam"></div>
     <div class="opening-light"></div>
-    <div class="opening-inner">
+    <p class="opening-words" id="openingWords">Every great talk begins with someone noticing something that others haven&rsquo;t.</p>
+    <div class="opening-reveal">
+      <div class="opening-bloom"></div>
       <img class="opening-logo" src="assets/tedx-ateneodemanilau-stacked-white.png" alt="" width="1000" height="227">
-      <p class="opening-line">Speaker nominations</p>
     </div>
     <p class="opening-skip">Tap or press any key to skip</p>
   </div>
@@ -49,7 +60,6 @@
 
     <!-- Introduction -->
     <section class="scene intro" id="introScene" aria-labelledby="introTitle">
-      <p class="kicker">Introduction</p>
       <h1 class="marquee" id="introTitle">Speaker nominations</h1>
 
       <dl class="defs">
@@ -115,7 +125,7 @@
     <form class="scene nomination" id="nomForm" novalidate hidden>
       <header class="form-head">
         <h2>Your nomination</h2>
-        <p>Questions marked <span class="req">*</span> are required. While you write, your answers are saved as a draft on this device.</p>
+        <p>Questions marked <span class="req">*</span> are required. While you write, your answers are saved as a draft to your Google account, so you can finish on another device.</p>
       </header>
 
       <div id="fields"></div>

@@ -7,30 +7,103 @@
   var html = document.documentElement;
 
   // ------------------------------------------------------------ Opening
+  // 1. "Every great talk begins..." appears word by word in the dark.
+  // 2. A spotlight sweeps the stage, lighting the dust, with the overhead beam turning to follow.
+  // 3. It settles on the centre, where the logo only appears inside the light.
+  // 4. A flicker, the light opens up, the TEDx red glows, and the page fades in.
   var opening = document.getElementById('opening');
   var openingDone = false;
+  var openingSpot = null;   // where the opening's light is, so the dust can glow there too
   var skipEvents = ['keydown', 'pointerdown', 'wheel', 'touchstart'];
+
+  var T = { wordsOut: 3000, sweep: 3100, land: 5000, open: 5500, end: 6500 };   // milliseconds
+
+  function easeInOut(u) { return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  function cubic(u, a, b, c, d) {
+    var v = 1 - u;
+    return v * v * v * a + 3 * v * v * u * b + 3 * v * u * u * c + u * u * u * d;
+  }
 
   function endOpening() {
     if (openingDone) return;
     openingDone = true;
+    openingSpot = null;
     skipEvents.forEach(function (ev) { window.removeEventListener(ev, endOpening, true); });
     html.classList.remove('is-opening');
     if (!opening) return;
     opening.classList.add('is-done');
-    setTimeout(function () { if (opening && opening.parentNode) opening.parentNode.removeChild(opening); }, 1050);
+    setTimeout(function () { if (opening && opening.parentNode) opening.parentNode.removeChild(opening); }, 1150);
   }
 
-  // The opening plays on every page load; any key, click or tap skips it.
+  function runOpening() {
+    html.classList.add('is-opening');
+
+    // Split the line into words that fade in one after another
+    var words = document.getElementById('openingWords');
+    if (words) {
+      var list = words.textContent.trim().split(/\s+/);
+      words.textContent = '';
+      list.forEach(function (w, i) {
+        var span = document.createElement('span');
+        span.textContent = w;
+        span.style.setProperty('--d', (0.35 + i * 0.1).toFixed(2) + 's');
+        words.appendChild(span);
+        if (i < list.length - 1) words.appendChild(document.createTextNode(' '));
+      });
+    }
+
+    var t0 = performance.now();
+    function frame(now) {
+      if (openingDone) return;
+      var t = now - t0;
+      var vw = window.innerWidth, vh = window.innerHeight;
+      var cx = vw / 2, cy = vh / 2;
+      var radius = Math.min(vw, vh) * 0.21;
+      var x, y, light = 0, beam = 0, bloom = 0;
+
+      if (words && t > T.wordsOut) words.classList.add('is-gone');
+
+      if (t < T.sweep) {
+        x = -0.3 * vw; y = 0.3 * vh;
+      } else if (t < T.land) {
+        // enters from the left, swings low and past the right, then settles on the centre
+        var u = easeInOut((t - T.sweep) / (T.land - T.sweep));
+        x = cubic(u, -0.2 * vw, 0.25 * vw, 1.1 * vw, cx);
+        y = cubic(u, 0.25 * vh, 0.95 * vh, 0.1 * vh, cy);
+        light = beam = Math.min(1, (t - T.sweep) / 450);
+      } else {
+        x = cx; y = cy; beam = 1;
+        var k = t - T.land;
+        light = (k < 480 && k % 160 < 55) ? 0.45 : 1;                // the lamp flickers as it lands
+        var g = easeInOut(Math.min(1, Math.max(0, (t - T.open) / 850)));
+        radius += g * Math.max(vw, vh) * 0.65;                         // then opens up
+        bloom = g;
+      }
+
+      opening.style.setProperty('--ox', x.toFixed(1) + 'px');
+      opening.style.setProperty('--oy', y.toFixed(1) + 'px');
+      opening.style.setProperty('--or', radius.toFixed(1) + 'px');
+      opening.style.setProperty('--ol', light.toFixed(3));
+      opening.style.setProperty('--beam', beam.toFixed(3));
+      opening.style.setProperty('--bloom', bloom.toFixed(3));
+      // the overhead beam hangs from the top centre and turns to point at the light
+      opening.style.setProperty('--ang', (-Math.atan2(x - cx, y + vh * 0.06)).toFixed(4) + 'rad');
+      openingSpot = light > 0 ? { x: x, y: y } : null;
+
+      if (t >= T.end) return endOpening();
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+    skipEvents.forEach(function (ev) {
+      window.addEventListener(ev, endOpening, { capture: true, passive: true });
+    });
+  }
+
   if (!opening || reduce) {
     if (opening && opening.parentNode) opening.parentNode.removeChild(opening);
     openingDone = true;
   } else {
-    html.classList.add('is-opening');
-    setTimeout(endOpening, 3700);
-    skipEvents.forEach(function (ev) {
-      window.addEventListener(ev, endOpening, { capture: true, passive: true });
-    });
+    runOpening();
   }
 
   // ------------------------------------------------------------ Canvas
@@ -142,7 +215,11 @@
   // ------------------------------------------------------------ Update and draw
   function update(t) {
     var pointerActive = t - lastPointer < 6000;
-    if (pointerActive) {
+    if (openingSpot) {
+      // during the opening the dust glows wherever the spotlight is
+      spot.tx = spot.x = openingSpot.x;
+      spot.ty = spot.y = openingSpot.y;
+    } else if (pointerActive) {
       // target already set by pointer
     } else if (anchor && anchor.offsetParent !== null) {
       var rect = anchor.getBoundingClientRect();

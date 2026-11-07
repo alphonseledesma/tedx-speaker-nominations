@@ -114,63 +114,115 @@ body {
 }
 
 /* -------------------------------------------------------------- Opening */
+/* stage.js drives the spotlight through these variables:
+   --ox --oy where the light is, --or its radius, --ol its brightness,
+   --ang the overhead beam's angle, --beam its brightness, --bloom the red glow at the end. */
 
 .opening {
+  --ox: -30vw; --oy: 30vh; --or: 120px; --ol: 0; --ang: 0rad; --beam: 0; --bloom: 0;
   position: fixed;
   inset: 0;
   z-index: 50;
-  display: grid;
-  place-items: center;
-  background: var(--house);
-  transition: opacity 1s ease;
+  overflow: hidden;
+  transition: opacity 1.1s ease;
 }
 .opening.is-done { opacity: 0; pointer-events: none; }
 
+/* During the opening the page waits in the dark; the dust and rings behind stay visible */
+html.is-opening .masthead,
+html.is-opening .theater,
+html.is-opening .foot,
+html.is-opening .beam,
+html.is-opening .spot { opacity: 0; }
+.masthead, .theater, .foot { transition: opacity 1.4s ease .15s; }
+.beam, .spot { transition: opacity 1.6s ease; }
+
+/* Overhead follow spot, turning to track the light */
+.opening-beam {
+  position: absolute;
+  top: -6vh;
+  left: 50%;
+  width: 260vmax;
+  height: 220vh;
+  transform: translateX(-50%) rotate(var(--ang));
+  transform-origin: 50% 0;
+  background: conic-gradient(from 180deg at 50% 0%,
+    rgba(var(--lamp), .12) 0deg,
+    rgba(var(--lamp), .045) 3.2deg,
+    transparent 6deg,
+    transparent 354deg,
+    rgba(var(--lamp), .045) 356.8deg,
+    rgba(var(--lamp), .12) 360deg);
+  filter: blur(10px);
+  opacity: var(--beam);
+}
+
+/* The pool of light on the stage floor */
 .opening-light {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 50% 47%,
-    rgba(var(--lamp), .17),
-    rgba(var(--lamp), .055) 24%,
-    transparent 50%);
-  opacity: 0;
-  animation: lamp-on 1.8s .25s ease-out forwards;
-}
-@keyframes lamp-on {
-  0%   { opacity: 0; }
-  18%  { opacity: .7; }
-  24%  { opacity: .15; }
-  34%  { opacity: .85; }
-  40%  { opacity: .45; }
-  100% { opacity: 1; }
+  opacity: var(--ol);
+  background: radial-gradient(circle calc(var(--or) * 1.9) at var(--ox) var(--oy),
+    rgba(var(--lamp), .21),
+    rgba(var(--lamp), .07) 38%,
+    transparent 70%);
 }
 
-.opening-inner {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 26px;
-  padding: 0 24px;
+/* The line that opens the show, word by word */
+.opening-words {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(88vw, 920px);
+  margin: 0;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  font-family: var(--display);
+  font-size: clamp(26px, 4.6vw, 50px);
+  font-weight: 300;
+  font-variation-settings: "wdth" 118;
+  line-height: 1.2;
+  letter-spacing: -.02em;
+  color: #fff;
+  text-wrap: balance;
+  transition: opacity .9s ease, filter .9s ease;
+}
+.opening-words span {
+  display: inline-block;
+  opacity: 0;
+  filter: blur(8px);
+  animation: word-in .9s cubic-bezier(.2, .6, .2, 1) forwards;
+  animation-delay: var(--d, 0s);
+}
+@keyframes word-in { to { opacity: 1; filter: blur(0); } }
+.opening-words.is-gone { opacity: 0; filter: blur(10px); }
+
+/* The logo only exists where the light falls */
+.opening-reveal {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  -webkit-mask-image: radial-gradient(circle var(--or) at var(--ox) var(--oy), #000 35%, transparent 100%);
+  mask-image: radial-gradient(circle var(--or) at var(--ox) var(--oy), #000 35%, transparent 100%);
 }
 .opening-logo {
+  position: relative;
   width: min(64vw, 400px);
   height: auto;
-  opacity: 0;
-  filter: blur(12px);
-  animation: come-into-focus 1.5s .9s cubic-bezier(.2, .6, .2, 1) forwards;
 }
-@keyframes come-into-focus {
-  to { opacity: 1; filter: blur(0); }
+.opening-bloom {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(120vw, 900px);
+  height: min(70vw, 520px);
+  transform: translate(-50%, -50%) scale(calc(.85 + var(--bloom) * .2));
+  background: radial-gradient(ellipse 34% 30% at 42% 44%, rgba(238, 36, 54, .34), rgba(238, 36, 54, .1) 55%, transparent 100%);
+  filter: blur(26px);
+  opacity: var(--bloom);
 }
-.opening-line {
-  margin: 0;
-  font-size: 15px;
-  letter-spacing: .06em;
-  color: var(--program);
-  opacity: 0;
-  animation: fade-in 1s 1.9s ease forwards;
-}
+
 .opening-skip {
   position: absolute;
   bottom: max(28px, env(safe-area-inset-bottom));
@@ -181,7 +233,7 @@ body {
   font-size: 13px;
   color: var(--dim);
   opacity: 0;
-  animation: fade-in .8s 1.4s ease forwards;
+  animation: fade-in .8s 1.2s ease forwards;
 }
 @keyframes fade-in { to { opacity: 1; } }
 
