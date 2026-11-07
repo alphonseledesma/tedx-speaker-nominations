@@ -7,7 +7,7 @@
   <meta name="description" content="Know someone whose ideas changed how you see things? Nominate them to speak at TEDxAteneodeManilaU.">
   <meta property="og:title" content="TEDxAteneodeManilaU Speaker Nominations">
   <meta property="og:description" content="Every great talk begins with someone noticing something that others haven't. Nominate them to speak.">
-  <meta name="theme-color" content="#0b0606">
+  <meta name="theme-color" content="#060505">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,7 +19,7 @@
     // The timer is a safety net in case a script fails to load.
     if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       document.documentElement.classList.add('is-opening');
-      setTimeout(function () { document.documentElement.classList.remove('is-opening'); }, 9000);
+      setTimeout(function () { document.documentElement.classList.remove('is-opening'); }, 10000);
     }
   </script>
   <script src="config.js"></script>
@@ -28,15 +28,25 @@
   <script src="app.js" defer></script>
 </head>
 <body>
-  <!-- Living gradient field behind everything, with film grain on top -->
-  <canvas class="field" id="field" aria-hidden="true"></canvas>
+  <!-- Background: canvas dust and rings, stage beam, cursor spotlight, vignette -->
+  <div class="stage" aria-hidden="true">
+    <canvas id="stageCanvas"></canvas>
+    <div class="beam"></div>
+    <div class="spot" id="spot"></div>
+    <div class="vignette"></div>
+  </div>
   <div class="grain" aria-hidden="true"></div>
 
-  <!-- Opening: a line of light opens into the striped sphere, floods the screen red, and the logo appears.
+  <!-- Opening: words in the dark, a spotlight searches the stage and finds the logo.
        Plays on every visit; any key, click or tap skips it. -->
   <div class="opening" id="opening" aria-hidden="true">
-    <canvas class="opening-canvas" id="openingCanvas"></canvas>
-    <img class="opening-logo" src="assets/tedx-ateneodemanilau-stacked-white.png" alt="" width="1000" height="227">
+    <div class="opening-beam"></div>
+    <div class="opening-light"></div>
+    <p class="opening-words" id="openingWords">Every great talk begins with someone noticing something that others haven&rsquo;t.</p>
+    <div class="opening-reveal">
+      <div class="opening-bloom"></div>
+      <img class="opening-logo" src="assets/tedx-ateneodemanilau-stacked-white.png" alt="" width="1000" height="227">
+    </div>
     <p class="opening-skip">Tap or press any key to skip</p>
   </div>
 
@@ -44,132 +54,107 @@
     <a class="brand" href="./">
       <img src="assets/tedx-ateneodemanilau-white.png" alt="TEDxAteneodeManilaU" width="900" height="67">
     </a>
-    <p class="masthead-meta" data-deadline hidden></p>
   </header>
 
-  <main id="main">
+  <main class="theater" id="main">
 
-    <!-- ================================================= Introduction -->
-    <div class="scene intro" id="introScene">
+    <!-- Introduction -->
+    <section class="scene intro" id="introScene" aria-labelledby="introTitle">
+      <h1 class="marquee" id="introTitle">Speaker nominations</h1>
 
-      <section class="hero" aria-labelledby="introTitle">
-        <canvas class="orb" id="heroOrb" aria-hidden="true"></canvas>
-        <h1 class="hero-title" id="introTitle">
-          <span data-text="Speaker">Speaker</span>
-          <span data-text="nominations">nominations</span>
-        </h1>
-        <div class="hero-foot">
-          <p class="hero-note">Nominate someone to speak at TEDxAteneodeManilaU.</p>
-          <button type="button" class="btn btn-paper" data-begin>Begin nomination</button>
+      <dl class="defs">
+        <div>
+          <dt>TED</dt>
+          <dd>TED is a nonprofit, nonpartisan organization dedicated to discovering, debating and spreading ideas that spark conversation, deepen understanding and drive meaningful change.</dd>
         </div>
-      </section>
+        <div>
+          <dt>TED<sup>x</sup></dt>
+          <dd>In the spirit of discovering and spreading ideas, TEDx is a program of local, self-organized events that bring people together to share a TED-like experience. At a TEDx event, TED Talks video and live speakers combine to spark deep discussion and connection. These local, self-organized events are branded TEDx, where x = independently organized TED event. The TED Conference provides general guidance for the TEDx program, but individual TEDx events are self-organized. (Subject to certain rules and regulations.)</dd>
+        </div>
+      </dl>
 
-      <section class="paper about" aria-label="About TED and TEDx">
-        <dl class="defs">
-          <div>
-            <dt>TED</dt>
-            <dd>TED is a nonprofit, nonpartisan organization dedicated to discovering, debating and spreading ideas that spark conversation, deepen understanding and drive meaningful change.</dd>
-          </div>
-          <div>
-            <dt>TED<sup>x</sup></dt>
-            <dd>In the spirit of discovering and spreading ideas, TEDx is a program of local, self-organized events that bring people together to share a TED-like experience. At a TEDx event, TED Talks video and live speakers combine to spark deep discussion and connection. These local, self-organized events are branded TEDx, where x = independently organized TED event. The TED Conference provides general guidance for the TEDx program, but individual TEDx events are self-organized. (Subject to certain rules and regulations.)</dd>
-          </div>
-        </dl>
-      </section>
-
-      <section class="invite" aria-label="Nominate a speaker">
+      <div class="invite">
         <p class="hook" id="hook">Every great talk begins with someone noticing something that others haven&rsquo;t.</p>
-        <p class="invite-body">Do you know someone like that? Nominate them to speak at TEDxAteneodeManilaU. Whether they&rsquo;re a student, a professor, a craftsman, or a mentor you&rsquo;ve learned from, if their ideas changed how you see things, we&rsquo;d love to hear about them.</p>
-        <div class="cta-row">
-          <button type="button" class="btn btn-paper" id="beginBtn">Begin nomination</button>
-          <p class="deadline" id="deadline" hidden></p>
-        </div>
-      </section>
-    </div>
-
-    <!-- ================================================= After "Begin nomination" -->
-    <div class="flow">
-
-      <section class="scene status" id="loading" hidden aria-live="polite">
-        <span class="pulse" aria-hidden="true"></span>
-        <span id="loadingText">Loading...</span>
-      </section>
-
-      <section class="scene sheet" id="fatal" hidden>
-        <h2>The form didn&rsquo;t load</h2>
-        <p id="fatalText"></p>
-      </section>
-
-      <section class="scene sheet" id="closed" hidden>
-        <h2>Nominations are closed</h2>
-        <p id="closedMessage"></p>
-      </section>
-
-      <section class="scene sheet signin" id="signin" hidden>
-        <h2>Sign in to nominate</h2>
-        <p>Use any Google account, such as Gmail or your school account. Signing in confirms each nomination comes from a real person, saves your draft as you go, and lets us send you a copy of your answers.</p>
-        <div class="gsi" id="gsiButton"></div>
-        <p class="field-error" id="signinError" role="alert"></p>
-      </section>
-
-      <div class="scene account" id="account" hidden>
-        <span>Signed in as <strong id="who"></strong></span>
-        <button type="button" class="link" id="switchBtn">Switch account</button>
+        <p>Do you know someone like that? Nominate them to speak at TEDxAteneodeManilaU. Whether they&rsquo;re a student, a professor, a craftsman, or a mentor you&rsquo;ve learned from, if their ideas changed how you see things, we&rsquo;d love to hear about them.</p>
       </div>
 
-      <section class="scene sheet" id="limitNotice" hidden>
-        <h2 id="limitTitle"></h2>
-        <p id="limitText"></p>
-      </section>
+      <div class="cta-row">
+        <button type="button" class="btn" id="beginBtn">Begin nomination</button>
+        <p class="deadline" id="deadline" hidden></p>
+      </div>
+    </section>
 
-      <!-- One question at a time, Typeform style -->
-      <form class="scene tf" id="nomForm" novalidate hidden>
-        <div class="tf-progress" role="progressbar" aria-label="Form progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress">
-          <span class="tf-progress-fill" id="progressFill"></span>
-        </div>
+    <!-- States the form moves through -->
+    <section class="scene status" id="loading" hidden aria-live="polite">
+      <span class="pulse" aria-hidden="true"></span>
+      <span id="loadingText">Setting the stage...</span>
+    </section>
 
-        <div class="tf-fields" id="fields"></div>
+    <section class="scene panel" id="fatal" hidden>
+      <h2>The form didn&rsquo;t load</h2>
+      <p id="fatalText"></p>
+    </section>
 
-        <div class="reauth" id="reauth" hidden>
-          <p><strong>Sign in again to submit.</strong> Your sign-in expired while you were writing. Your answers are still here.</p>
-          <div class="gsi" id="gsiReauth"></div>
-        </div>
+    <section class="scene panel" id="closed" hidden>
+      <h2>Nominations are closed</h2>
+      <p id="closedMessage"></p>
+    </section>
 
-        <div class="tf-nav">
-          <div class="tf-actions">
-            <button type="button" class="btn btn-paper" id="nextBtn">Next</button>
-            <button type="submit" class="btn btn-paper" id="submitBtn" hidden>Submit nomination</button>
-            <span class="tf-hint" id="keyHint" aria-hidden="true"></span>
-          </div>
-          <div class="tf-meta">
-            <button type="button" class="link" id="backBtn">Back</button>
-            <span class="tf-count" id="progressText"></span>
-            <span class="draft-status" id="draftStatus" aria-live="polite"></span>
-          </div>
-        </div>
-        <p class="form-error" id="formError" role="alert"></p>
-      </form>
+    <section class="scene panel signin" id="signin" hidden>
+      <h2>Sign in to nominate</h2>
+      <p>Use any Google account, such as Gmail or your school account. Signing in confirms each nomination comes from a real person, and we&rsquo;ll send you a copy of your answers.</p>
+      <div class="gsi" id="gsiButton"></div>
+      <p class="field-error" id="signinError" role="alert"></p>
+    </section>
 
-      <section class="scene sheet done" id="done" hidden tabindex="-1">
-        <p class="sheet-kicker">Nomination received</p>
-        <h2 id="doneHeading"></h2>
-        <p id="doneMessage"></p>
-        <p class="ref">Reference number <strong id="doneRef"></strong></p>
-        <button type="button" class="btn btn-ink" id="anotherBtn">Nominate another speaker</button>
-      </section>
-
-      <section class="scene mine" id="mine" hidden>
-        <h3>Your nominations</h3>
-        <ul id="mineList"></ul>
-      </section>
-
-      <noscript>
-        <section class="sheet">
-          <h2>Turn on JavaScript</h2>
-          <p>This form needs JavaScript to sign you in. Turn it on, then reload the page.</p>
-        </section>
-      </noscript>
+    <div class="scene account" id="account" hidden>
+      <span>Signed in as <strong id="who"></strong></span>
+      <button type="button" class="link" id="switchBtn">Switch account</button>
     </div>
+
+    <section class="scene mine" id="mine" hidden>
+      <h3>Your nominations</h3>
+      <ul id="mineList"></ul>
+    </section>
+
+    <section class="scene panel" id="limitNotice" hidden>
+      <h2 id="limitTitle"></h2>
+      <p id="limitText"></p>
+    </section>
+
+    <form class="scene nomination" id="nomForm" novalidate hidden>
+      <header class="form-head">
+        <h2>Your nomination</h2>
+        <p>Questions marked <span class="req">*</span> are required. While you write, your answers are saved as a draft to your Google account, so you can finish on another device.</p>
+      </header>
+
+      <div id="fields"></div>
+
+      <div class="reauth" id="reauth" hidden>
+        <p><strong>Sign in again to submit.</strong> Your sign-in expired while you were writing. Your answers are still here.</p>
+        <div class="gsi" id="gsiReauth"></div>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn" id="submitBtn">Submit nomination</button>
+        <p class="draft-status" id="draftStatus" aria-live="polite"></p>
+      </div>
+      <p class="form-error" id="formError" role="alert"></p>
+    </form>
+
+    <section class="scene panel done" id="done" hidden tabindex="-1">
+      <h2 id="doneHeading"></h2>
+      <p id="doneMessage"></p>
+      <p class="ref">Reference number <strong id="doneRef"></strong></p>
+      <button type="button" class="btn secondary" id="anotherBtn">Nominate another speaker</button>
+    </section>
+
+    <noscript>
+      <section class="panel">
+        <h2>Turn on JavaScript</h2>
+        <p>This form needs JavaScript to sign you in. Turn it on, then reload the page.</p>
+      </section>
+    </noscript>
   </main>
 
   <footer class="foot">

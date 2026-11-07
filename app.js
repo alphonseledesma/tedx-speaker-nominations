@@ -14,7 +14,6 @@
     user: null,
     pendingSubmit: false,
     busy: false,
-    step: 0,         // which question is on screen
     started: false,  // true once the visitor clicks "Begin nomination"
     queue: [],       // screens waiting for the introduction to end
   };
@@ -81,10 +80,6 @@
     if (cfg.deadlineText && cfg.open) {
       $('deadline').textContent = 'Nominations close ' + cfg.deadlineText;
       show('deadline', true);
-      Array.prototype.forEach.call(document.querySelectorAll('[data-deadline]'), function (n) {
-        n.textContent = 'Closes ' + cfg.deadlineText;
-        n.hidden = false;
-      });
     }
   }
 
@@ -95,13 +90,9 @@
     else state.queue.push(fn);
   }
 
-  function beginButtons() {
-    return Array.prototype.slice.call(document.querySelectorAll('#beginBtn, [data-begin]'));
-  }
-
   function begin() {
     if (state.started || $('beginBtn').disabled) return;
-    beginButtons().forEach(function (b) { b.disabled = true; });
+    $('beginBtn').disabled = true;
     var intro = $('introScene');
     intro.classList.add('is-leaving');
     setTimeout(function () {
@@ -155,14 +146,10 @@
   function buildQuestion(box, q, i, total) {
     var id = 'f-' + q.key;
     var wrap = el('div', 'q');
-    wrap.tabIndex = -1;
-    var num = el('div', 'q-num', String(i + 1));
-    num.setAttribute('aria-label', 'Question ' + (i + 1) + ' of ' + total);
-    wrap.appendChild(num);
+    wrap.appendChild(el('div', 'q-num', (i + 1) + ' of ' + total));
 
     var label = el('label', 'q-label', q.label);
-    label.id = id + '-label';
-    if (q.type !== 'dropdown') label.htmlFor = id;
+    label.htmlFor = id;
     if (q.required) {
       var star = el('span', 'req', ' *');
       star.setAttribute('aria-hidden', 'true');
@@ -179,15 +166,11 @@
     }
 
     var input;
-    var choices = null;
     if (q.type === 'long text') {
-      input = el('textarea', q.wordLimit ? 'long' : '');
-      input.rows = q.wordLimit ? 7 : 4;
+      input = el('textarea');
+      input.rows = q.wordLimit ? 10 : 5;
     } else if (q.type === 'dropdown') {
-      // A hidden select keeps the value; the visible lettered buttons drive it.
-      input = el('select', 'choice-source');
-      input.tabIndex = -1;
-      input.setAttribute('aria-hidden', 'true');
+      input = el('select');
       var first = el('option', null, 'Choose one');
       first.value = '';
       input.appendChild(first);
@@ -195,20 +178,6 @@
         var opt = el('option', null, o);
         opt.value = o;
         input.appendChild(opt);
-      });
-      choices = el('div', 'choices');
-      choices.setAttribute('role', 'radiogroup');
-      choices.setAttribute('aria-labelledby', label.id);
-      q.options.forEach(function (o, n) {
-        var b = el('button', 'choice');
-        b.type = 'button';
-        b.setAttribute('role', 'radio');
-        b.setAttribute('aria-checked', 'false');
-        b.dataset.value = o;
-        b.appendChild(el('span', 'choice-key', String.fromCharCode(65 + n))).setAttribute('aria-hidden', 'true');
-        b.appendChild(el('span', 'choice-text', o));
-        b.addEventListener('click', function () { pickChoice(q.key, o, true); });
-        choices.appendChild(b);
       });
     } else {
       input = el('input');
@@ -224,13 +193,12 @@
       input.maxLength = CAPS[q.type] || 1000;
       if (q.placeholder) input.placeholder = q.placeholder;
     }
-    if (q.required) (choices || input).setAttribute('aria-required', 'true');
+    if (q.required) input.setAttribute('aria-required', 'true');
     wrap.appendChild(input);
-    if (choices) wrap.appendChild(choices);
 
     var other = null;
     if (q.type === 'dropdown' && q.options.indexOf(SELF_DESCRIBE) !== -1) {
-      other = el('input', 'other');
+      other = el('input');
       other.type = 'text';
       other.name = q.key + 'Other';
       other.maxLength = 60;
@@ -238,6 +206,10 @@
       other.setAttribute('aria-label', q.label + ', self-description');
       other.hidden = true;
       wrap.appendChild(other);
+      input.addEventListener('change', function () {
+        other.hidden = input.value !== SELF_DESCRIBE;
+        if (!other.hidden) other.focus();
+      });
     }
 
     var counter = null;
@@ -249,170 +221,13 @@
     var error = el('p', 'field-error');
     error.id = id + '-err';
     describedBy.push(error.id);
-    (choices || input).setAttribute('aria-describedby', describedBy.join(' '));
+    input.setAttribute('aria-describedby', describedBy.join(' '));
     wrap.appendChild(error);
 
-    controls[q.key] = { q: q, wrap: wrap, input: input, choices: choices, other: other, counter: counter, error: error };
+    controls[q.key] = { q: q, wrap: wrap, input: input, other: other, counter: counter, error: error };
     keys.push(q.key);
     box.appendChild(wrap);
     updateCounter(q.key);
-  }
-
-  // Show the hidden select's value on the lettered buttons, and the self-describe box when it applies.
-  function syncChoices(key) {
-    var c = controls[key];
-    if (!c || !c.choices) return;
-    Array.prototype.forEach.call(c.choices.children, function (b) {
-      var on = b.dataset.value === c.input.value;
-      b.classList.toggle('is-selected', on);
-      b.setAttribute('aria-checked', on ? 'true' : 'false');
-    });
-    if (c.other) c.other.hidden = c.input.value !== SELF_DESCRIBE;
-  }
-
-  var advanceTimer = null;
-  function pickChoice(key, value, advance) {
-    var c = controls[key];
-    c.input.value = value;
-    syncChoices(key);
-    c.input.dispatchEvent(new Event('change', { bubbles: true }));   // clears errors and saves the draft
-    clearTimeout(advanceTimer);
-    if (value === SELF_DESCRIBE && c.other) {
-      c.other.focus();
-      return;
-    }
-    // Like Typeform: a choice moves on by itself after a beat (except on the last question).
-    if (advance && state.step < keys.length - 1) {
-      advanceTimer = setTimeout(function () {
-        if (keys[state.step] === key) next();
-      }, REDUCED_MOTION ? 150 : 420);
-    }
-  }
-
-  // ---------- One question at a time ----------
-  var IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-
-  function isEmptyAnswer(key) {
-    return !String(controls[key].input.value || '').trim();
-  }
-
-  function showStep(i, backwards) {
-    if (!keys.length) return;
-    clearTimeout(advanceTimer);
-    i = Math.max(0, Math.min(keys.length - 1, i));
-    state.step = i;
-    keys.forEach(function (k, n) {
-      var w = controls[k].wrap;
-      w.classList.toggle('is-current', n === i);
-      w.classList.toggle('from-above', n === i && !!backwards);
-      w.setAttribute('aria-hidden', n === i ? 'false' : 'true');
-    });
-    var total = keys.length;
-    var pct = Math.round(((i + 1) / total) * 100);
-    $('progressFill').style.width = pct + '%';
-    $('progress').setAttribute('aria-valuenow', String(pct));
-    $('progressText').textContent = (i + 1) + ' of ' + total;
-    $('backBtn').hidden = i === 0;
-    var last = i === total - 1;
-    $('nextBtn').hidden = last;
-    $('submitBtn').hidden = !last;
-    updateNextLabel();
-    updateHint();
-
-    // Keep the question in view and put the cursor in it.
-    var top = $('nomForm').getBoundingClientRect().top;
-    if (top < 0 || top > window.innerHeight * 0.4) {
-      $('nomForm').scrollIntoView({ behavior: REDUCED_MOTION ? 'auto' : 'smooth', block: 'start' });
-    }
-    var c = controls[keys[i]];
-    var target = c.choices ? (c.choices.querySelector('.is-selected') || c.wrap) : c.input;
-    try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); }
-  }
-
-  // An optional question left blank says "Skip" instead of "Next".
-  function updateNextLabel() {
-    var k = keys[state.step];
-    if (!k) return;
-    var skip = !controls[k].q.required && isEmptyAnswer(k);
-    $('nextBtn').textContent = skip ? 'Skip' : 'Next';
-  }
-
-  function updateHint() {
-    var c = controls[keys[state.step]];
-    if (!c) return;
-    var last = state.step === keys.length - 1;
-    var verb = last ? 'submit' : 'continue';
-    var hint;
-    if (c.choices) hint = 'Press a letter to choose' + (last ? '' : ', <kbd>Enter &crarr;</kbd> to continue');
-    else if (c.input.tagName === 'TEXTAREA') hint = 'Press <kbd>' + (IS_MAC ? '&#8984;' : 'Ctrl') + ' + Enter &crarr;</kbd> to ' + verb;
-    else hint = 'Press <kbd>Enter &crarr;</kbd> to ' + verb;
-    $('keyHint').innerHTML = hint;
-  }
-
-  function next() {
-    var k = keys[state.step];
-    if (!k) return;
-    var msg = checkAnswer(k, collect());
-    if (msg) {
-      var e = {};
-      e[k] = msg;
-      showErrors(e, true);
-      return;
-    }
-    showErrors({});
-    saveDraftNow();
-    showStep(state.step + 1, false);
-  }
-
-  function back() {
-    if (state.step > 0) showStep(state.step - 1, true);
-  }
-
-  // After a draft is restored, pick up at the first required question still blank.
-  function resumeStep() {
-    var i;
-    for (i = 0; i < keys.length; i++) {
-      if (controls[keys[i]].q.required && isEmptyAnswer(keys[i])) return i;
-    }
-    for (i = 0; i < keys.length; i++) {
-      if (isEmptyAnswer(keys[i])) return i;
-    }
-    return keys.length - 1;
-  }
-
-  function onFormKey(e) {
-    if (e.isComposing || state.busy) return;
-    var c = controls[keys[state.step]];
-    if (!c) return;
-    var t = e.target;
-    var last = state.step === keys.length - 1;
-    var go = function () { e.preventDefault(); if (last) submit(); else next(); };
-
-    if (e.key === 'Enter') {
-      if (t.tagName === 'TEXTAREA') {
-        if (e.ctrlKey || e.metaKey) go();
-        return;                                       // plain Enter makes a new line
-      }
-      if (t.tagName === 'BUTTON' && t.type !== 'submit' && !t.classList.contains('choice')) return;   // Back, Switch account
-      if (t.classList && t.classList.contains('choice')) {
-        e.preventDefault();
-        pickChoice(c.q.key, t.dataset.value, true);
-        return;
-      }
-      if (t.tagName === 'INPUT' || t === c.wrap) go();
-      return;
-    }
-
-    // Letter keys pick a choice, unless the visitor is typing in a box.
-    if (c.choices && !e.ctrlKey && !e.metaKey && !e.altKey && /^[a-z]$/i.test(e.key) &&
-        t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA') {
-      var b = c.choices.children[e.key.toUpperCase().charCodeAt(0) - 65];
-      if (b) {
-        e.preventDefault();
-        b.focus();
-        pickChoice(c.q.key, b.dataset.value, true);
-      }
-    }
   }
 
   function updateCounter(key) {
@@ -437,11 +252,12 @@
     keys.forEach(function (k) {
       var c = controls[k];
       if (data[k] !== undefined) c.input.value = data[k];
-      if (c.other) c.other.value = data[k + 'Other'] || '';
-      syncChoices(k);
+      if (c.other) {
+        c.other.value = data[k + 'Other'] || '';
+        c.other.hidden = c.input.value !== SELF_DESCRIBE;
+      }
       updateCounter(k);
     });
-    updateNextLabel();
   }
 
   function formIsEmpty() {
@@ -452,61 +268,61 @@
   function resetForm() {
     $('nomForm').reset();
     keys.forEach(function (k) {
-      syncChoices(k);
+      if (controls[k].other) controls[k].other.hidden = true;
       updateCounter(k);
     });
     showErrors({});
     $('formError').textContent = '';
     $('draftStatus').textContent = '';
-    showStep(0);
   }
 
   // ---------- Validation ----------
-  function checkAnswer(k, data) {
-    var q = controls[k].q;
-    var v = String(data[k] || '').trim();
-    if (!v) return q.required ? (q.type === 'dropdown' ? 'Please choose an answer.' : 'This question is required.') : '';
-    if (q.type === 'number' && (!/^\d{1,3}$/.test(v) || +v < 1 || +v > 120)) return 'Enter a whole number between 1 and 120.';
-    if (q.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return 'Enter a valid email address.';
-    if (q.type === 'dropdown' && v === SELF_DESCRIBE && !String(data[k + 'Other'] || '').trim()) return 'Please describe, or choose another option.';
-    if (q.wordLimit) {
-      var n = countWords(v);
-      if (n > q.wordLimit) return 'Please keep this to ' + q.wordLimit + ' words or fewer. It is ' + n + ' words now.';
-    }
-    return '';
-  }
-
   function validate(data) {
     var errs = {};
     keys.forEach(function (k) {
-      var msg = checkAnswer(k, data);
-      if (msg) errs[k] = msg;
+      var q = controls[k].q;
+      var v = String(data[k] || '').trim();
+      if (!v) {
+        if (q.required) errs[k] = 'This question is required.';
+        return;
+      }
+      if (q.type === 'number' && (!/^\d{1,3}$/.test(v) || +v < 1 || +v > 120)) {
+        errs[k] = 'Enter a whole number between 1 and 120.';
+        return;
+      }
+      if (q.type === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
+        errs[k] = 'Enter a valid email address.';
+        return;
+      }
+      if (q.type === 'dropdown' && v === SELF_DESCRIBE && !String(data[k + 'Other'] || '').trim()) {
+        errs[k] = 'Please describe, or choose another option.';
+        return;
+      }
+      if (q.wordLimit) {
+        var n = countWords(v);
+        if (n > q.wordLimit) errs[k] = 'Please keep this to ' + q.wordLimit + ' words or fewer. It is ' + n + ' words now.';
+      }
     });
     return errs;
   }
 
-  // Marks the questions with errors. With jump, it goes to the first of them
-  // (or, when only the current one is wrong, keeps the cursor there).
-  function showErrors(errs, jump) {
-    var first = -1;
-    keys.forEach(function (k, n) {
+  function showErrors(errs, focusFirst) {
+    var first = null;
+    keys.forEach(function (k) {
       var c = controls[k];
       var msg = errs[k] || '';
       c.error.textContent = msg;
       c.wrap.classList.toggle('invalid', !!msg);
-      (c.choices || c.input).setAttribute('aria-invalid', msg ? 'true' : 'false');
-      if (msg && first < 0) first = n;
+      c.input.setAttribute('aria-invalid', msg ? 'true' : 'false');
+      if (msg && !first) first = c;
     });
-    if (!jump || first < 0) return;
-    if (first !== state.step) showStep(first, first < state.step);
-    else {
-      var c = controls[keys[first]];
-      var target = c.choices ? c.wrap : c.input;
-      try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); }
+    if (focusFirst && first) {
+      first.wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      first.input.focus({ preventScroll: true });
     }
   }
 
-  // ---------- Drafts: saved to the signed-in Google account, with a backup copy in this browser ----------
+  // ---------- Drafts (saved in this browser only) ----------
   var storage = (function () {
     try {
       var t = '__t';
@@ -517,101 +333,42 @@
       return null;
     }
   })();
-  var draftTimer = null;     // browser copy, shortly after typing stops
-  var serverTimer = null;    // account copy, a few seconds after typing stops
-  var lastServerJson = '';   // what the account already has, so unchanged drafts aren't re-sent
-  var SERVER_DELAY = 3000;
+  var draftTimer = null;
 
   function draftKey() { return state.user ? DRAFT_PREFIX + state.user.email : ''; }
 
-  function readLocalDraft() {
-    if (!storage || !state.user) return null;
-    try {
-      var d = JSON.parse(storage.getItem(draftKey()) || 'null');
-      if (!d) return null;
-      return d.answers ? d : { answers: d, savedAt: 0 };   // older drafts stored the answers only
-    } catch (e) {
-      return null;
-    }
-  }
-
   function saveDraftNow() {
     clearTimeout(draftTimer);
-    if (!state.user) return;
-    var empty = formIsEmpty();
-    if (storage) {
-      try {
-        if (empty) storage.removeItem(draftKey());
-        else storage.setItem(draftKey(), JSON.stringify({ savedAt: Date.now(), answers: collect() }));
-      } catch (e) { /* storage full or blocked: the account copy still works */ }
-    }
-    if (empty) $('draftStatus').textContent = '';
-    scheduleAccountSave();
+    if (!storage || !state.user) return;
+    try {
+      if (formIsEmpty()) {
+        storage.removeItem(draftKey());
+        $('draftStatus').textContent = '';
+      } else {
+        storage.setItem(draftKey(), JSON.stringify(collect()));
+        $('draftStatus').textContent = 'Draft saved on this device';
+      }
+    } catch (e) { /* storage full or blocked: drafts are a convenience only */ }
   }
   function saveDraftSoon() {
     clearTimeout(draftTimer);
     draftTimer = setTimeout(saveDraftNow, 800);
   }
-
-  function draftJson() { return JSON.stringify(formIsEmpty() ? {} : collect()); }
-  function tokenUsable() { return !!state.token && Date.now() < state.tokenExp - 30 * 1000; }
-
-  function scheduleAccountSave() {
-    clearTimeout(serverTimer);
-    serverTimer = setTimeout(saveDraftToAccount, SERVER_DELAY);
-  }
-
-  function saveDraftToAccount() {
-    clearTimeout(serverTimer);
-    if (!state.user || state.busy || !tokenUsable()) return;
-    var json = draftJson();
-    if (json === lastServerJson) return;
-    var sentFor = state.user.email;
-    apiPost({ action: 'saveDraft', idToken: state.token, answers: JSON.parse(json) }).then(function (res) {
-      if (!state.user || state.user.email !== sentFor || !res || !res.ok) return;
-      lastServerJson = json;
-      if (json !== '{}' && draftJson() === json) $('draftStatus').textContent = 'Draft saved to your Google account';
-    }).catch(function () { /* offline: the browser copy is still there and the next save retries */ });
-  }
-
-  // When the page is closed or hidden, send any unsaved draft without waiting for a reply.
-  function flushDraftOnLeave() {
-    if (!state.user) return;
-    saveDraftNow();
-    clearTimeout(serverTimer);
-    if (state.busy || !tokenUsable() || !navigator.sendBeacon) return;
-    var json = draftJson();
-    if (json === lastServerJson) return;
+  function restoreDraft() {
+    if (!storage || !state.user) return;
     try {
-      navigator.sendBeacon(CFG.API_URL, JSON.stringify({ action: 'saveDraft', idToken: state.token, answers: JSON.parse(json) }));
-      lastServerJson = json;
-    } catch (e) { /* ignore */ }
+      var data = JSON.parse(storage.getItem(draftKey()) || 'null');
+      if (data) {
+        fill(data);
+        $('draftStatus').textContent = 'We restored your unsent draft';
+      }
+    } catch (e) { /* ignore a broken draft */ }
   }
-
-  // Use whichever draft is newer: the one saved to the account, or the one in this browser.
-  function restoreDraft(accountDraft) {
-    var local = readLocalDraft();
-    var useAccount = accountDraft && accountDraft.answers &&
-      (!local || (accountDraft.updatedAt || 0) >= (local.savedAt || 0));
-    var answers = useAccount ? accountDraft.answers : (local && local.answers);
-    if (!answers) return;
-    fill(answers);
-    if (useAccount) {
-      lastServerJson = draftJson();
-      $('draftStatus').textContent = 'We restored your draft from your Google account';
-    } else {
-      $('draftStatus').textContent = 'We restored your unsent draft from this device';
-      scheduleAccountSave();   // copy it to the account too
-    }
-  }
-
   function clearDraft() {
     clearTimeout(draftTimer);
-    clearTimeout(serverTimer);
     if (storage && state.user) {
       try { storage.removeItem(draftKey()); } catch (e) { /* ignore */ }
     }
-    lastServerJson = '{}';   // the server deletes the account draft when a nomination is submitted
     $('draftStatus').textContent = '';
   }
 
@@ -679,7 +436,6 @@
         return backToSignIn(res.message || 'Sign-in did not work. Please try again.');
       }
 
-      if (!state.user || state.user.email !== res.email) lastServerJson = '';
       state.user = { email: res.email, name: res.name };
       renderAccount();
       renderMine(res.myNominations);
@@ -691,16 +447,9 @@
 
       show('limitNotice', false);
       show('done', false);
-      var restored = false;
-      if (formIsEmpty()) {
-        restoreDraft(res.draft);
-        restored = !formIsEmpty();
-      }
+      if (formIsEmpty()) restoreDraft();
       show('nomForm', true);
-      if (!formVisible) {
-        window.scrollTo({ top: 0, behavior: REDUCED_MOTION ? 'auto' : 'smooth' });
-        showStep(restored ? resumeStep() : 0);
-      }
+      if (!formVisible) window.scrollTo({ top: 0, behavior: REDUCED_MOTION ? 'auto' : 'smooth' });
 
       state.pendingSubmit = false;
       if (wasPending && previousEmail === res.email) submit();
@@ -731,7 +480,6 @@
 
   function switchAccount() {
     saveDraftNow();
-    saveDraftToAccount();
     if (window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
     resetForm();
     backToSignIn('');
@@ -747,13 +495,11 @@
 
   function submit() {
     if (state.busy) return;
-    clearTimeout(advanceTimer);
     var data = collect();
     var errs = validate(data);
     showErrors(errs, true);
     if (Object.keys(errs).length) {
-      var left = Object.keys(errs).length;
-      $('formError').textContent = left === 1 ? 'One question still needs an answer.' : left + ' questions still need answers. We took you to the first one.';
+      $('formError').textContent = 'Please check the highlighted questions.';
       return;
     }
     $('formError').textContent = '';
@@ -761,7 +507,6 @@
     // Google sign-in tokens last about an hour. Ask again before it runs out.
     if (!state.token || Date.now() > state.tokenExp - 60 * 1000) return askReauth();
 
-    clearTimeout(serverTimer);
     setBusy(true);
     apiPost({ action: 'submit', idToken: state.token, answers: data }).then(function (res) {
       setBusy(false);
@@ -769,7 +514,7 @@
       if (res.code === 'AUTH') return askReauth();
       if (res.code === 'INVALID') {
         showErrors(res.errors || {}, true);
-        $('formError').textContent = res.message || 'Please check this answer.';
+        $('formError').textContent = res.message || 'Please check the highlighted questions.';
         return;
       }
       if (res.code === 'CLOSED' || res.code === 'LIMIT') {
@@ -801,9 +546,12 @@
   }
 
   function nominateAnother() {
+    resetForm();
     show('done', false);
     show('nomForm', true);
-    resetForm();   // also returns to the first question
+    $('nomForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    var first = keys.length ? controls[keys[0]].input : null;
+    if (first) first.focus({ preventScroll: true });
   }
 
   // ---------- Events ----------
@@ -821,7 +569,6 @@
       }
     }
     $('formError').textContent = '';
-    updateNextLabel();
     saveDraftSoon();
   }
 
@@ -831,16 +578,10 @@
     form.addEventListener('submit', function (e) { e.preventDefault(); submit(); });
     form.addEventListener('input', onFieldInput);
     form.addEventListener('change', onFieldInput);
-    form.addEventListener('keydown', onFormKey);
-    $('nextBtn').addEventListener('click', next);
-    $('backBtn').addEventListener('click', back);
     $('switchBtn').addEventListener('click', switchAccount);
-    beginButtons().forEach(function (b) { b.addEventListener('click', begin); });
+    $('beginBtn').addEventListener('click', begin);
     $('anotherBtn').addEventListener('click', nominateAnother);
-    window.addEventListener('pagehide', flushDraftOnLeave);
-    document.addEventListener('visibilitychange', function () {
-      if (document.visibilityState === 'hidden') flushDraftOnLeave();
-    });
+    window.addEventListener('pagehide', saveDraftNow);
 
     if (!CFG.API_URL || /PASTE/.test(CFG.API_URL) || !CFG.GOOGLE_CLIENT_ID || /PASTE/.test(CFG.GOOGLE_CLIENT_ID)) {
       return fatal('This portal is not set up yet. Fill in config.js with the web app URL and the Google client ID.');

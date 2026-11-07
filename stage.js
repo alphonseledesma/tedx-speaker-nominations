@@ -1,4 +1,4 @@
-/* Visuals for the poster direction: the living gradient field, the striped sphere, and the opening.
+/* Stage effects: opening sequence, follow spot, drifting dust, film scratches and slow grainy rings.
    Purely visual. The form logic lives in app.js. */
 (function () {
   'use strict';
@@ -6,286 +6,332 @@
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var html = document.documentElement;
 
-  var C = {
-    ink: [11, 6, 6],
-    ember: [238, 36, 54],
-    flare: [255, 91, 31],
-    wine: [79, 9, 16],
-    cream: [255, 236, 214],
-  };
-  function rgba(c, a) { return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
-  function mix(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t].map(Math.round); }
-  function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
-  function easeInOut(u) { u = clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
-  function easeIn(u) { u = clamp01(u); return u * u * u; }
-
-  // ------------------------------------------------------------ The striped sphere
-  // Horizontal bands clipped to a circle. Hot cream and orange in the middle, red to the sides,
-  // bands thickest at the equator. The stripes drift slowly downward, like a scanning light.
-  function drawSphere(ctx, cx, cy, R, t, open) {
-    if (R <= 0) return;
-    open = open == null ? 1 : open;
-    var bands = 15;
-    var step = (2 * R) / bands;
-    var offset = ((t * 0.012) % step + step) % step;
-
-    // soft halo behind the sphere
-    var halo = ctx.createRadialGradient(cx, cy, R * 0.2, cx, cy, R * 1.6);
-    halo.addColorStop(0, rgba(C.flare, 0.28 * open));
-    halo.addColorStop(1, rgba(C.flare, 0));
-    ctx.fillStyle = halo;
-    ctx.fillRect(cx - R * 1.6, cy - R * 1.6, R * 3.2, R * 3.2);
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.clip();
-    for (var i = -1; i <= bands; i++) {
-      var yc = cy - R + step * (i + 0.5) + offset;
-      var dy = (yc - cy) / R;                                   // -1 top … 1 bottom
-      if (Math.abs(dy) >= 1) continue;
-      var half = Math.sqrt(1 - dy * dy) * R;
-      var pulse = 0.5 + 0.5 * Math.sin(t * 0.0013 + i * 0.6);
-      var share = (0.28 + 0.52 * (1 - Math.abs(dy)) + 0.12 * pulse) * open;
-      var h = step * Math.min(0.94, share);
-      var hot = clamp01(1 - Math.abs(dy + 0.18) * 1.15);          // hottest just above the middle
-      var core = mix(C.ember, C.cream, Math.pow(hot, 1.5));
-      var mid = mix(C.ember, C.flare, hot);
-      var g = ctx.createLinearGradient(cx - half, 0, cx + half, 0);
-      g.addColorStop(0, rgba(C.wine, 0));
-      g.addColorStop(0.16, rgba(C.ember, 0.75));
-      g.addColorStop(0.34, rgba(mid, 0.95));
-      g.addColorStop(0.5, rgba(core, 1));
-      g.addColorStop(0.66, rgba(mid, 0.95));
-      g.addColorStop(0.84, rgba(C.ember, 0.75));
-      g.addColorStop(1, rgba(C.wine, 0));
-      ctx.fillStyle = g;
-      ctx.fillRect(cx - half, yc - h / 2, half * 2, h);
-    }
-    ctx.restore();
-  }
-
-  // ------------------------------------------------------------ The gradient field
-  // Drawn small and stretched to full screen, so the browser's scaling blurs it into soft light.
-  var field = document.getElementById('field');
-  var fctx = field ? field.getContext('2d') : null;
-  var FW = 0, FH = 0;
-  var blobs = [
-    { c: C.ember, x: 0.78, y: 0.22, r: 0.72, sx: 1.6, a: 0.95, ax: 0.08, ay: 0.06, sp: 0.00011, ph: 0.0 },
-    { c: C.flare, x: 0.64, y: 0.16, r: 0.36, sx: 2.6, a: 0.85, ax: 0.12, ay: 0.05, sp: 0.00016, ph: 1.7 },
-    { c: C.wine, x: 0.16, y: 0.72, r: 0.85, sx: 1.3, a: 0.95, ax: 0.07, ay: 0.08, sp: 0.00009, ph: 3.1 },
-    { c: C.ember, x: 0.22, y: 0.96, r: 0.5, sx: 3.0, a: 0.7, ax: 0.15, ay: 0.03, sp: 0.00013, ph: 4.4 },
-    { c: C.cream, x: 0.72, y: 0.2, r: 0.11, sx: 1.8, a: 0.4, ax: 0.05, ay: 0.03, sp: 0.00021, ph: 2.2 },
-    // motion streaks
-    { c: C.flare, x: 0.4, y: 0.42, r: 0.05, sx: 16, a: 0.45, ax: 0.25, ay: 0.02, sp: 0.00018, ph: 0.9 },
-    { c: C.ember, x: 0.55, y: 0.58, r: 0.04, sx: 20, a: 0.5, ax: 0.3, ay: 0.02, sp: 0.00014, ph: 2.6 },
-    { c: C.cream, x: 0.7, y: 0.34, r: 0.025, sx: 22, a: 0.22, ax: 0.2, ay: 0.015, sp: 0.00024, ph: 5.0 },
-  ];
-  var scrollShift = 0;
-
-  function sizeField() {
-    if (!field) return;
-    FW = Math.max(64, Math.round(window.innerWidth * 0.12));
-    FH = Math.max(64, Math.round(window.innerHeight * 0.12));
-    field.width = FW;
-    field.height = FH;
-  }
-
-  function drawField(t) {
-    if (!fctx) return;
-    fctx.globalCompositeOperation = 'source-over';
-    fctx.fillStyle = rgba(C.ink, 1);
-    fctx.fillRect(0, 0, FW, FH);
-    fctx.globalCompositeOperation = 'screen';
-    var m = Math.max(FW, FH);
-    for (var i = 0; i < blobs.length; i++) {
-      var b = blobs[i];
-      var x = (b.x + b.ax * Math.sin(t * b.sp + b.ph)) * FW;
-      var y = (b.y + b.ay * Math.cos(t * b.sp * 1.3 + b.ph) - scrollShift * 0.35) * FH;
-      var r = b.r * m;
-      fctx.save();
-      fctx.translate(x, y);
-      fctx.scale(b.sx, 1);
-      var g = fctx.createRadialGradient(0, 0, 0, 0, 0, r);
-      g.addColorStop(0, rgba(b.c, b.a));
-      g.addColorStop(0.55, rgba(b.c, b.a * 0.35));
-      g.addColorStop(1, rgba(b.c, 0));
-      fctx.fillStyle = g;
-      fctx.fillRect(-r, -r, r * 2, r * 2);
-      fctx.restore();
-    }
-    // darken the edges so text always has somewhere to sit
-    fctx.globalCompositeOperation = 'source-over';
-    var v = fctx.createRadialGradient(FW * 0.6, FH * 0.35, Math.min(FW, FH) * 0.2, FW * 0.5, FH * 0.5, m * 0.85);
-    v.addColorStop(0, rgba(C.ink, 0));
-    v.addColorStop(1, rgba(C.ink, 0.7));
-    fctx.fillStyle = v;
-    fctx.fillRect(0, 0, FW, FH);
-  }
-
-  // ------------------------------------------------------------ The sphere in the hero
-  var orb = document.getElementById('heroOrb');
-  var octx = orb ? orb.getContext('2d') : null;
-  var orbVisible = true;
-  var pointer = { x: 0, y: 0, tx: 0, ty: 0 };
-
-  function sizeOrb() {
-    if (!orb) return;
-    var rect = orb.getBoundingClientRect();
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    orb.width = Math.max(1, Math.round(rect.width * dpr));
-    orb.height = Math.max(1, Math.round(rect.height * dpr));
-  }
-
-  function drawOrb(t) {
-    if (!octx || !orbVisible) return;
-    var w = orb.width, h = orb.height;
-    octx.clearRect(0, 0, w, h);
-    pointer.x += (pointer.tx - pointer.x) * 0.05;
-    pointer.y += (pointer.ty - pointer.y) * 0.05;
-    var R = Math.min(w, h) * 0.36 * (1 + 0.015 * Math.sin(t * 0.0009));
-    drawSphere(octx, w / 2 + pointer.x * w * 0.03, h / 2 + pointer.y * h * 0.03, R, t, 1);
-  }
-
-  if (orb && 'IntersectionObserver' in window) {
-    new IntersectionObserver(function (entries) {
-      orbVisible = entries[0].isIntersecting && !orb.closest('[hidden]');
-    }).observe(orb);
-  }
-
-  // ------------------------------------------------------------ The opening
-  // A thin line of light opens into the striped sphere, which grows until the screen floods red;
-  // the centre darkens so the logo can appear, then the page fades in.
+  // ------------------------------------------------------------ Opening
+  // 1. "Every great talk begins..." appears word by word in the dark.
+  // 2. A spotlight sweeps the stage, lighting the dust, with the overhead beam turning to follow.
+  // 3. It settles on the centre, where the logo only appears inside the light.
+  // 4. A flicker, the light opens up, the TEDx red glows, and the page fades in.
   var opening = document.getElementById('opening');
-  var ocanvas = document.getElementById('openingCanvas');
-  var ctxO = ocanvas ? ocanvas.getContext('2d') : null;
-  var openingDone = true;
+  var openingDone = false;
+  var openingSpot = null;   // where the opening's light is, so the dust can glow there too
   var skipEvents = ['keydown', 'pointerdown', 'wheel', 'touchstart'];
-  var T = { line: 250, opened: 1500, zoom: 2300, flooded: 3200, logo: 2700, end: 4100 };   // ms
+
+  var T = { wordsOut: 3000, sweep: 3100, land: 5000, open: 5500, end: 6500 };   // milliseconds
+
+  function easeInOut(u) { return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
+  function cubic(u, a, b, c, d) {
+    var v = 1 - u;
+    return v * v * v * a + 3 * v * v * u * b + 3 * v * u * u * c + u * u * u * d;
+  }
 
   function endOpening() {
     if (openingDone) return;
     openingDone = true;
+    openingSpot = null;
     skipEvents.forEach(function (ev) { window.removeEventListener(ev, endOpening, true); });
     html.classList.remove('is-opening');
     if (!opening) return;
     opening.classList.add('is-done');
-    setTimeout(function () { if (opening.parentNode) opening.parentNode.removeChild(opening); }, 1050);
-  }
-
-  function sizeOpening() {
-    if (!ocanvas) return;
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    ocanvas.width = Math.round(window.innerWidth * dpr);
-    ocanvas.height = Math.round(window.innerHeight * dpr);
-  }
-
-  function drawOpening(t) {
-    var w = ocanvas.width, h = ocanvas.height;
-    var cx = w / 2, cy = h / 2;
-    var base = Math.min(w, h) * 0.27;
-    ctxO.fillStyle = rgba(C.ink, 1);
-    ctxO.fillRect(0, 0, w, h);
-
-    // 1. the line opens vertically into the sphere
-    var openY = Math.max(0.012, easeInOut((t - T.line) / (T.opened - T.line)));
-    // 2. the sphere grows past the edges of the screen
-    var zoom = easeIn((t - T.zoom) / (T.flooded - T.zoom));
-    var R = base * (1 + zoom * (Math.max(w, h) / base) * 1.25);
-    if (t < T.line) return;
-
-    // red flood behind, rising as the sphere grows
-    if (zoom > 0) {
-      var flood = ctxO.createRadialGradient(cx, cy, 0, cx, cy, Math.max(w, h) * 0.8);
-      flood.addColorStop(0, rgba(C.ember, 0.9 * zoom));
-      flood.addColorStop(0.6, rgba(C.wine, 0.9 * zoom));
-      flood.addColorStop(1, rgba(C.ink, 0.9 * zoom));
-      ctxO.fillStyle = flood;
-      ctxO.fillRect(0, 0, w, h);
-    }
-
-    ctxO.save();
-    ctxO.translate(cx, cy);
-    ctxO.scale(1, openY);
-    ctxO.translate(-cx, -cy);
-    drawSphere(ctxO, cx, cy, R, t, Math.min(1, openY * 1.2));
-    ctxO.restore();
-
-    // 3. the centre darkens so the red of the logo still reads
-    var dark = clamp01((t - T.logo + 200) / 700);
-    if (dark > 0) {
-      var d = ctxO.createRadialGradient(cx, cy, 0, cx, cy, Math.min(w, h) * 0.55);
-      var deep = [26, 4, 8];   // a red-black, so the centre reads as shadow rather than grey haze
-      d.addColorStop(0, rgba(deep, 0.94 * dark));
-      d.addColorStop(0.5, rgba(deep, 0.72 * dark));
-      d.addColorStop(1, rgba(deep, 0));
-      ctxO.fillStyle = d;
-      ctxO.fillRect(0, 0, w, h);
-    }
-    opening.style.setProperty('--logo', easeInOut((t - T.logo) / 700).toFixed(3));
+    setTimeout(function () { if (opening && opening.parentNode) opening.parentNode.removeChild(opening); }, 1150);
   }
 
   function runOpening() {
-    openingDone = false;
     html.classList.add('is-opening');
-    sizeOpening();
+
+    // Split the line into words that fade in one after another
+    var words = document.getElementById('openingWords');
+    if (words) {
+      var list = words.textContent.trim().split(/\s+/);
+      words.textContent = '';
+      list.forEach(function (w, i) {
+        var span = document.createElement('span');
+        span.textContent = w;
+        span.style.setProperty('--d', (0.35 + i * 0.1).toFixed(2) + 's');
+        words.appendChild(span);
+        if (i < list.length - 1) words.appendChild(document.createTextNode(' '));
+      });
+    }
+
     var t0 = performance.now();
-    (function frame(now) {
+    function frame(now) {
       if (openingDone) return;
       var t = now - t0;
-      drawOpening(t);
+      var vw = window.innerWidth, vh = window.innerHeight;
+      var cx = vw / 2, cy = vh / 2;
+      var radius = Math.min(vw, vh) * 0.21;
+      var x, y, light = 0, beam = 0, bloom = 0;
+
+      if (words && t > T.wordsOut) words.classList.add('is-gone');
+
+      if (t < T.sweep) {
+        x = -0.3 * vw; y = 0.3 * vh;
+      } else if (t < T.land) {
+        // enters from the left, swings low and past the right, then settles on the centre
+        var u = easeInOut((t - T.sweep) / (T.land - T.sweep));
+        x = cubic(u, -0.2 * vw, 0.25 * vw, 1.1 * vw, cx);
+        y = cubic(u, 0.25 * vh, 0.95 * vh, 0.1 * vh, cy);
+        light = beam = Math.min(1, (t - T.sweep) / 450);
+      } else {
+        x = cx; y = cy; beam = 1;
+        var k = t - T.land;
+        light = (k < 480 && k % 160 < 55) ? 0.45 : 1;                // the lamp flickers as it lands
+        var g = easeInOut(Math.min(1, Math.max(0, (t - T.open) / 850)));
+        radius += g * Math.max(vw, vh) * 0.65;                         // then opens up
+        bloom = g;
+      }
+
+      opening.style.setProperty('--ox', x.toFixed(1) + 'px');
+      opening.style.setProperty('--oy', y.toFixed(1) + 'px');
+      opening.style.setProperty('--or', radius.toFixed(1) + 'px');
+      opening.style.setProperty('--ol', light.toFixed(3));
+      opening.style.setProperty('--beam', beam.toFixed(3));
+      opening.style.setProperty('--bloom', bloom.toFixed(3));
+      // the overhead beam hangs from the top centre and turns to point at the light
+      opening.style.setProperty('--ang', (-Math.atan2(x - cx, y + vh * 0.06)).toFixed(4) + 'rad');
+      openingSpot = light > 0 ? { x: x, y: y } : null;
+
       if (t >= T.end) return endOpening();
       requestAnimationFrame(frame);
-    })(t0);
+    }
+    requestAnimationFrame(frame);
     skipEvents.forEach(function (ev) {
       window.addEventListener(ev, endOpening, { capture: true, passive: true });
     });
   }
 
-  if (opening && !reduce && ctxO) {
-    runOpening();
-  } else {
+  if (!opening || reduce) {
     if (opening && opening.parentNode) opening.parentNode.removeChild(opening);
-    html.classList.remove('is-opening');
+    openingDone = true;
+  } else {
+    runOpening();
   }
 
-  // ------------------------------------------------------------ Loop and events
-  function onScroll() {
-    var max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
-    scrollShift = window.scrollY / max;
-  }
-  window.addEventListener('scroll', onScroll, { passive: true });
+  // ------------------------------------------------------------ Canvas
+  var canvas = document.getElementById('stageCanvas');
+  var spotEl = document.getElementById('spot');
+  if (!canvas || !canvas.getContext) return;
+  var ctx = canvas.getContext('2d');
 
+  var W = 0, H = 0, DPR = 1;
+  var builtW = 0, builtH = 0;
+  var dust = [];
+  var rings = [];
+  var scratches = [];
+  var nextScratch = 0;
+
+  // Follow spot: rests on the hook line until the visitor moves the pointer.
+  var spot = { x: 0, y: 0, tx: 0, ty: 0 };
+  var lastPointer = -1e9;
+  var anchor = document.getElementById('hook');
+
+  function rand(a, b) { return a + Math.random() * (b - a); }
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 1.5);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    // Mobile address bars change the height while scrolling; only rebuild for real size changes.
+    if (Math.abs(W - builtW) > 40 || Math.abs(H - builtH) > 160) {
+      builtW = W; builtH = H;
+      buildDust();
+      buildRings();
+    }
+    if (!spot.x) { spot.x = spot.tx = W * 0.5; spot.y = spot.ty = H * 0.42; }
+    if (reduce) draw(0);
+  }
+
+  function buildDust() {
+    var n = Math.round(Math.max(36, Math.min(120, (W * H) / 14000)));
+    dust = [];
+    for (var i = 0; i < n; i++) {
+      dust.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        r: rand(0.35, 1.7),
+        vx: rand(-0.008, 0.008),
+        vy: -rand(0.004, 0.02),
+        a: rand(0.1, 0.5),
+        ph: Math.random() * Math.PI * 2,
+        sp: rand(0.4, 1.3)
+      });
+    }
+  }
+
+  // Grainy concentric bands drawn once, then rotated each frame.
+  function ringSprite(radius, innerRatio, bands) {
+    var size = Math.ceil(radius * 2);
+    var c = document.createElement('canvas');
+    c.width = c.height = size;
+    var g = c.getContext('2d');
+    var inner = radius * innerRatio;
+    var span = radius - inner;
+    var bandW = span / bands;
+    var n = Math.min(140000, Math.round(Math.PI * (radius * radius - inner * inner) * 0.14));
+    for (var i = 0; i < n; i++) {
+      var r = Math.sqrt(inner * inner + Math.random() * (radius * radius - inner * inner));
+      var b = (r - inner) / bandW;
+      var lit = Math.floor(b) % 2 === 0;
+      var keep = lit ? 0.25 + 0.75 * Math.sin((b % 1) * Math.PI) : 0.05;
+      if (Math.random() > keep) continue;
+      var ang = Math.random() * Math.PI * 2;
+      var fade = 1 - ((r - inner) / span) * 0.6;
+      var red = Math.random() < 0.4;
+      g.fillStyle = red
+        ? 'rgba(238,36,54,' + (0.34 * fade).toFixed(3) + ')'
+        : 'rgba(226,214,204,' + (0.42 * fade * (0.3 + 0.7 * Math.random())).toFixed(3) + ')';
+      g.fillRect(radius + Math.cos(ang) * r, radius + Math.sin(ang) * r, 1.4, 1.4);
+    }
+    return c;
+  }
+
+  function buildRings() {
+    var m = Math.min(W, H);
+    var big = Math.max(180, m * 0.56);
+    var small = Math.max(110, m * 0.27);
+    rings = [
+      { img: ringSprite(big, 0.2, 7), cx: W * 0.97, cy: H * 1.02, r: big, speed: 0.000018, alpha: 0.9, ph: 0 },
+      { img: ringSprite(small, 0.24, 5), cx: W * 0.01, cy: H * -0.02, r: small, speed: -0.000026, alpha: 0.75, ph: 2 }
+    ];
+  }
+
+  function spawnScratch(t) {
+    var len = rand(18, 90);
+    var ang = rand(0, Math.PI * 2);
+    var x = rand(0, W), y = rand(0, H);
+    scratches.push({
+      x: x, y: y,
+      x2: x + Math.cos(ang) * len, y2: y + Math.sin(ang) * len,
+      cx: x + Math.cos(ang + rand(-0.9, 0.9)) * len * 0.6,
+      cy: y + Math.sin(ang + rand(-0.9, 0.9)) * len * 0.6,
+      born: t,
+      life: rand(240, 520)
+    });
+    nextScratch = t + rand(700, 2400);
+  }
+
+  // ------------------------------------------------------------ Update and draw
+  function update(t) {
+    var pointerActive = t - lastPointer < 6000;
+    if (openingSpot) {
+      // during the opening the dust glows wherever the spotlight is
+      spot.tx = spot.x = openingSpot.x;
+      spot.ty = spot.y = openingSpot.y;
+    } else if (pointerActive) {
+      // target already set by pointer
+    } else if (anchor && anchor.offsetParent !== null) {
+      var rect = anchor.getBoundingClientRect();
+      if (rect.bottom > 0 && rect.top < H) {
+        spot.tx = rect.left + rect.width * 0.5 + Math.sin(t * 0.00035) * rect.width * 0.18;
+        spot.ty = rect.top + rect.height * 0.5 + Math.cos(t * 0.00029) * 18;
+      } else {
+        drift(t);
+      }
+    } else {
+      drift(t);
+    }
+    spot.x += (spot.tx - spot.x) * 0.045;
+    spot.y += (spot.ty - spot.y) * 0.045;
+    if (spotEl) {
+      spotEl.style.setProperty('--sx', spot.x.toFixed(1) + 'px');
+      spotEl.style.setProperty('--sy', spot.y.toFixed(1) + 'px');
+    }
+
+    if (!reduce && t > nextScratch) spawnScratch(t);
+    scratches = scratches.filter(function (s) { return t - s.born < s.life; });
+  }
+
+  function drift(t) {
+    spot.tx = W * (0.5 + 0.2 * Math.sin(t * 0.00012));
+    spot.ty = H * (0.36 + 0.1 * Math.cos(t * 0.00009));
+  }
+
+  function draw(t, dt) {
+    ctx.clearRect(0, 0, W, H);
+
+    // Rings
+    rings.forEach(function (ring) {
+      ctx.save();
+      ctx.globalAlpha = ring.alpha;
+      ctx.translate(ring.cx, ring.cy);
+      ctx.rotate(t * ring.speed + ring.ph);
+      var s = 1 + 0.012 * Math.sin(t * 0.0004 + ring.ph);
+      ctx.scale(s, s);
+      ctx.drawImage(ring.img, -ring.r, -ring.r);
+      ctx.restore();
+    });
+
+    // Dust, brighter when it drifts through the light
+    var reach = Math.min(W, H) * 0.42;
+    for (var i = 0; i < dust.length; i++) {
+      var p = dust[i];
+      if (dt) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        if (p.y < -4) { p.y = H + 4; p.x = Math.random() * W; }
+        if (p.x < -4) p.x = W + 4;
+        if (p.x > W + 4) p.x = -4;
+      }
+      var dx = p.x - spot.x, dy = p.y - spot.y;
+      var lit = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy) / reach);
+      var tw = 0.6 + 0.4 * Math.sin(t * 0.001 * p.sp + p.ph);
+      var a = p.a * tw * (0.45 + 1.4 * lit);
+      ctx.fillStyle = 'rgba(255,238,222,' + Math.min(0.9, a).toFixed(3) + ')';
+      if (p.r > 1) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillRect(p.x, p.y, p.r * 1.6, p.r * 1.6);
+      }
+    }
+
+    // Film scratches flicker in and out
+    ctx.lineWidth = 0.7;
+    ctx.lineCap = 'round';
+    scratches.forEach(function (s) {
+      var k = (t - s.born) / s.life;
+      ctx.strokeStyle = 'rgba(230,222,214,' + (0.32 * Math.sin(Math.PI * k)).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.moveTo(s.x, s.y);
+      ctx.quadraticCurveTo(s.cx, s.cy, s.x2, s.y2);
+      ctx.stroke();
+    });
+  }
+
+  var last = 0;
+  function frame(t) {
+    var dt = last ? Math.min(64, t - last) : 16;
+    last = t;
+    update(t);
+    draw(t, dt);
+    requestAnimationFrame(frame);
+  }
+
+  // ------------------------------------------------------------ Events
   window.addEventListener('pointermove', function (e) {
     if (e.pointerType === 'touch') return;
-    pointer.tx = e.clientX / window.innerWidth - 0.5;
-    pointer.ty = e.clientY / window.innerHeight - 0.5;
+    lastPointer = performance.now();
+    spot.tx = e.clientX;
+    spot.ty = e.clientY;
   }, { passive: true });
 
   var resizeTimer = null;
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(function () {
-      sizeField();
-      sizeOrb();
-      if (!openingDone) sizeOpening();
-      if (reduce) { drawField(0); drawOrb(0); }
-    }, 120);
+    resizeTimer = setTimeout(resize, 120);
   });
 
-  // The hero sphere reappears when someone returns to the introduction; keep it sized.
-  document.addEventListener('stage:begin', function () { orbVisible = false; });
+  // After the introduction, the spot drifts over the stage instead of resting on the hook line.
+  document.addEventListener('stage:begin', function () { anchor = null; });
 
-  sizeField();
-  sizeOrb();
+  resize();
   if (reduce) {
-    drawField(0);
-    drawOrb(0);
+    update(0);
+    draw(0, 0);
   } else {
-    (function loop(now) {
-      drawField(now);
-      drawOrb(now);
-      requestAnimationFrame(loop);
-    })(performance.now());
+    requestAnimationFrame(frame);
   }
 })();
