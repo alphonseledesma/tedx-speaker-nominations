@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TEDx Speaker Nominations</title>
+  <meta name="description" content="Know someone whose work deserves a stage? Nominate them as a speaker.">
+  <meta property="og:title" content="TEDx Speaker Nominations">
+  <meta property="og:description" content="Know someone whose work deserves a stage? Nominate them as a speaker.">
+  <meta name="theme-color" content="#0b0b0b">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+
+  <script src="config.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <p class="eyebrow">Nominate a speaker</p>
+      <h1 id="title">TEDx Speaker Nominations</h1>
+      <p class="intro" id="intro"></p>
+      <p class="deadline" id="deadline" hidden></p>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="card status" id="loading" aria-live="polite">
+      <span class="spinner" aria-hidden="true"></span>
+      <span id="loadingText">Loading the form...</span>
+    </section>
+
+    <section class="card" id="fatal" hidden>
+      <h2>Something went wrong</h2>
+      <p id="fatalText"></p>
+    </section>
+
+    <section class="card" id="closed" hidden>
+      <h2>Nominations are closed</h2>
+      <p id="closedMessage"></p>
+    </section>
+
+    <section class="card signin" id="signin" hidden>
+      <h2>Sign in to nominate</h2>
+      <p>Sign in with any Google account, such as Gmail or a school or work account. It confirms each nomination comes from a real person, and we send you a copy of your answers.</p>
+      <div class="gsi" id="gsiButton"></div>
+      <p class="field-error" id="signinError" role="alert"></p>
+    </section>
+
+    <div class="account" id="account" hidden>
+      <span>Signed in as <strong id="who"></strong></span>
+      <button type="button" class="link" id="switchBtn">Switch account</button>
+    </div>
+
+    <section class="card mine" id="mine" hidden>
+      <h2>Your nominations</h2>
+      <ul id="mineList"></ul>
+    </section>
+
+    <section class="card" id="limitNotice" hidden>
+      <h2 id="limitTitle"></h2>
+      <p id="limitText"></p>
+    </section>
+
+    <form class="card" id="nomForm" novalidate hidden>
+      <div id="fields"></div>
+
+      <div class="reauth" id="reauth" hidden>
+        <p><strong>Please sign in again to submit.</strong> Your sign-in expired while you were writing. Your answers are still here.</p>
+        <div class="gsi" id="gsiReauth"></div>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn" id="submitBtn">Submit nomination</button>
+        <p class="draft-status" id="draftStatus" aria-live="polite"></p>
+      </div>
+      <p class="form-error" id="formError" role="alert"></p>
+    </form>
+
+    <section class="card done" id="done" hidden tabindex="-1">
+      <p class="eyebrow">Nomination received</p>
+      <h2 id="doneHeading"></h2>
+      <p id="doneMessage"></p>
+      <p class="ref">Reference number <strong id="doneRef"></strong></p>
+      <button type="button" class="btn secondary" id="anotherBtn">Nominate another speaker</button>
+    </section>
+
+    <noscript>
+      <section class="card">
+        <h2>JavaScript is turned off</h2>
+        <p>This form needs JavaScript to sign you in. Please turn it on and reload the page.</p>
+      </section>
+    </noscript>
+  </main>
+
+  <footer class="foot">
+    <p>Nominations are read by the event's speaker committee and used only to review and contact speakers. <a href="privacy.html">Privacy policy</a></p>
+  </footer>
+</body>
+</html>
