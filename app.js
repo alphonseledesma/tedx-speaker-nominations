@@ -399,7 +399,7 @@
     target.textContent = '';
     google.accounts.id.renderButton(target, {
       type: 'standard',
-      theme: 'outline',
+      theme: 'filled_black',
       size: 'large',
       shape: 'pill',
       text: 'continue_with',

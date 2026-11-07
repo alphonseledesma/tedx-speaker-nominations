@@ -359,7 +359,14 @@ body {
   50%      { opacity: 1;   transform: scale(1); }
 }
 
-.gsi { margin-top: 28px; min-height: 44px; }
+/* Google's sign-in button lives in an iframe. On a dark page the browser paints a white box
+   behind it unless the iframe's colour scheme matches, so keep this container "light". */
+.gsi {
+  margin-top: 28px;
+  min-height: 44px;
+  color-scheme: light;
+}
+.gsi iframe { color-scheme: light; background: transparent !important; }
 
 .account {
   display: flex;
