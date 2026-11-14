@@ -36,6 +36,9 @@
   var mid = document.createElement('canvas');     // the striped circle: small, then stretched, so it is out of focus too
   var mctx = mid.getContext('2d');
   var MID = 0.3;
+  var trail = document.createElement('canvas');   // the cursor trail: drawn small too, so its pieces melt together
+  var tctx = trail.getContext('2d');
+  var TRAIL = 0.5;
 
   function size() {
     W = window.innerWidth;
@@ -47,6 +50,8 @@
     soft.height = Math.max(40, Math.round(H * 0.07));
     mid.width = Math.max(80, Math.round(W * MID));
     mid.height = Math.max(80, Math.round(H * MID));
+    trail.width = Math.max(60, Math.round(W * TRAIL));
+    trail.height = Math.max(60, Math.round(H * TRAIL));
   }
 
   // ------------------------------------------------------------ Scenes
@@ -267,31 +272,148 @@
     if (t >= T.end) finish();
   }
 
-  // ------------------------------------------------------------ The cursor glow
-  // A soft red light that trails the mouse, a little behind it. Only on computers with a mouse or
-  // trackpad, never on touch screens, and not when someone has asked for reduced motion.
+  // ------------------------------------------------------------ The cursor trail
+  // As the mouse moves it leaves a loose wisp of red, pink and wine. The wisp is built from
+  // irregular pieces: each piece is two to four stretched lobes at random angles, stretched along
+  // the direction of travel so neighbours overlap. Everything is drawn on a small canvas and
+  // enlarged, so overlapping pieces melt into one uneven shape. Then each piece drifts off on its
+  // own course, its lobes slowly turning and swelling, so the wisp tears apart and fades like
+  // smoke. A faint glow also sits under the cursor.
+  // Only on computers with a mouse or trackpad, never on touch screens, and not when someone
+  // has asked for reduced motion.
   var hoverable = !reduce && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-  var cur = { x: 0, y: 0, tx: 0, ty: 0, seen: false, on: 0, want: 0 };
+  var cur = { x: 0, y: 0, tx: 0, ty: 0, seen: false, on: 0, want: 0, lx: 0, ly: 0, carry: 0 };
+  var puffs = [];
+  var MAX_PUFFS = 90;
+  var PUFF_COLORS = [[214, 40, 40], [196, 30, 34], [160, 24, 30], [120, 16, 24], [224, 120, 116]];
+  var lastStep = 0;
 
-  function stepCursor() {
-    cur.x += (cur.tx - cur.x) * 0.09;
-    cur.y += (cur.ty - cur.y) * 0.09;
+  function rand(a, b) { return a + Math.random() * (b - a); }
+
+  function shed(x, y, speed, dirX, dirY) {
+    if (puffs.length >= MAX_PUFFS) puffs.shift();
+    var base = Math.max(W, H);
+    var heading = Math.atan2(dirY, dirX);
+    var side = rand(-1, 1) * base * 0.022;                 // a little to either side of the path
+    var spread = Math.random() < 0.18 ? rand(0.02, 0.05) * base : 0;   // and now and then, a stray piece
+    var ang = Math.random() * Math.PI * 2;
+    var drift = rand(6, 20) + Math.min(speed, 2500) * 0.006;
+    var size = base * (Math.random() < 0.25 ? rand(0.06, 0.09) : rand(0.035, 0.06));
+    var lobes = [];
+    var n = 2 + ((Math.random() * 3) | 0);
+    for (var k = 0; k < n; k++) {
+      lobes.push({
+        ox: rand(-0.9, 0.9), oy: rand(-0.6, 0.6),          // offset inside the piece, as a share of its size
+        r: rand(0.5, 1),                                     // lobe size
+        st: rand(1.3, 2.4),                                  // how stretched it is
+        rot: heading + rand(-0.9, 0.9),                      // mostly along the path, never exactly
+        spin: rand(-0.3, 0.3),                               // turns slowly as it fades
+      });
+    }
+    puffs.push({
+      x: x - Math.sin(heading) * side + Math.cos(ang) * spread,
+      y: y + Math.cos(heading) * side + Math.sin(ang) * spread,
+      vx: Math.cos(ang) * drift,
+      vy: Math.sin(ang) * drift - rand(2, 7),              // a slight upward float, like warm air
+      size: size,
+      grow: rand(1.4, 2.2),
+      life: rand(1.8, 3.2),                                // seconds
+      age: 0,
+      a: rand(0.08, 0.15),
+      c: PUFF_COLORS[(Math.random() * PUFF_COLORS.length) | 0],
+      lobes: lobes,
+      wob: rand(0, 6.28),
+      wsp: rand(0.5, 1.1),
+    });
+  }
+
+  // returns true while anything is still moving, so the loop keeps drawing every frame
+  function stepCursor(now) {
+    var dt = lastStep ? Math.min(0.05, (now - lastStep) / 1000) : 0.016;
+    lastStep = now;
+    cur.x += (cur.tx - cur.x) * 0.1;
+    cur.y += (cur.ty - cur.y) * 0.1;
     cur.on += (cur.want - cur.on) * 0.06;
-    return Math.abs(cur.tx - cur.x) > 0.4 || Math.abs(cur.ty - cur.y) > 0.4 || Math.abs(cur.want - cur.on) > 0.004;
+
+    if (cur.seen && cur.want) {
+      var dx = cur.x - cur.lx, dy = cur.y - cur.ly;
+      var d = Math.sqrt(dx * dx + dy * dy);
+      var speed = d / Math.max(dt, 0.001);
+      cur.carry += d;
+      var gap = Math.max(W, H) * 0.03;                     // close enough that pieces overlap...
+      while (cur.carry > gap) {
+        cur.carry -= gap * rand(0.6, 1.6);
+        if (Math.random() < 0.14) continue;                // ...with the odd break in the wisp
+        var u = Math.random();
+        shed(cur.lx + dx * u, cur.ly + dy * u, speed, dx, dy);
+      }
+    }
+    cur.lx = cur.x;
+    cur.ly = cur.y;
+
+    for (var i = puffs.length - 1; i >= 0; i--) {
+      var p = puffs[i];
+      p.age += dt;
+      if (p.age >= p.life) { puffs.splice(i, 1); continue; }
+      p.wob += p.wsp * dt;
+      p.x += (p.vx + Math.sin(p.wob) * 10) * dt;           // each piece meanders on its own
+      p.y += (p.vy + Math.cos(p.wob * 0.8) * 7) * dt;
+      p.vx *= 0.98;
+      p.vy *= 0.98;
+      for (var k = 0; k < p.lobes.length; k++) p.lobes[k].rot += p.lobes[k].spin * dt;
+    }
+    return puffs.length > 0 || Math.abs(cur.tx - cur.x) > 0.4 || Math.abs(cur.ty - cur.y) > 0.4 || Math.abs(cur.want - cur.on) > 0.004;
   }
 
   function drawCursorGlow(level) {
-    if (!hoverable || !cur.seen || cur.on < 0.004) return;
-    var r = Math.max(W, H) * 0.22;
-    var a = cur.on * level;
-    var g = ctx.createRadialGradient(cur.x, cur.y, 0, cur.x, cur.y, r);
-    g.addColorStop(0, rgba([240, 92, 84], 0.34 * a));
-    g.addColorStop(0.3, rgba([220, 44, 46], 0.18 * a));
-    g.addColorStop(0.65, rgba([130, 18, 24], 0.06 * a));
-    g.addColorStop(1, rgba([120, 16, 22], 0));
-    ctx.globalCompositeOperation = 'screen';
-    ctx.fillStyle = g;
-    ctx.fillRect(cur.x - r, cur.y - r, r * 2, r * 2);
+    if (!hoverable || !cur.seen) return;
+    if (puffs.length) {
+      var sx = trail.width / W, sy = trail.height / H;
+      tctx.setTransform(1, 0, 0, 1, 0, 0);
+      tctx.globalCompositeOperation = 'source-over';
+      tctx.clearRect(0, 0, trail.width, trail.height);
+      tctx.globalCompositeOperation = 'lighter';           // overlaps add up, so pieces merge into one shape
+      for (var i = 0; i < puffs.length; i++) {
+        var p = puffs[i];
+        var u = p.age / p.life;
+        var fade = u < 0.3 ? u / 0.3 : 1 - (u - 0.3) / 0.7;       // eases in, then out slowly
+        fade = fade * fade * (3 - 2 * fade);
+        var a = p.a * fade * level;
+        if (a < 0.003) continue;
+        var grow = 1 + (p.grow - 1) * u;
+        for (var k = 0; k < p.lobes.length; k++) {
+          var L = p.lobes[k];
+          var r = p.size * L.r * grow * sx;
+          var cx = (p.x + L.ox * p.size * grow) * sx, cy = (p.y + L.oy * p.size * grow) * sy;
+          tctx.setTransform(1, 0, 0, 1, 0, 0);
+          tctx.translate(cx, cy);
+          tctx.rotate(L.rot);
+          tctx.scale(L.st, 1);
+          var g = tctx.createRadialGradient(0, 0, 0, 0, 0, r);
+          var la = a / Math.sqrt(p.lobes.length);
+          g.addColorStop(0, rgba(p.c, la));
+          g.addColorStop(0.35, rgba(p.c, la * 0.7));
+          g.addColorStop(0.7, rgba(p.c, la * 0.25));
+          g.addColorStop(1, rgba(p.c, 0));
+          tctx.fillStyle = g;
+          tctx.fillRect(-r, -r, r * 2, r * 2);
+        }
+      }
+      ctx.globalCompositeOperation = 'screen';
+      ctx.drawImage(trail, 0, 0, W, H);
+    }
+    // a faint glow right under the cursor
+    if (cur.on > 0.004) {
+      var R = Math.max(W, H) * 0.11;
+      var ga = cur.on * level;
+      var gl = ctx.createRadialGradient(cur.x, cur.y, 0, cur.x, cur.y, R);
+      gl.addColorStop(0, rgba([220, 60, 56], 0.08 * ga));
+      gl.addColorStop(0.5, rgba([180, 30, 36], 0.03 * ga));
+      gl.addColorStop(1, rgba([120, 16, 22], 0));
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = gl;
+      ctx.fillRect(cur.x - R, cur.y - R, R * 2, R * 2);
+    }
     ctx.globalCompositeOperation = 'source-over';
   }
 
@@ -300,7 +422,7 @@
       if (e.pointerType === 'touch') return;
       cur.tx = e.clientX;
       cur.ty = e.clientY;
-      if (!cur.seen) { cur.x = cur.tx; cur.y = cur.ty; cur.seen = true; }
+      if (!cur.seen) { cur.x = cur.lx = cur.tx; cur.y = cur.ly = cur.ty; cur.seen = true; }
       cur.want = 1;
     }, { passive: true });
     document.documentElement.addEventListener('mouseleave', function () { cur.want = 0; });
@@ -312,7 +434,7 @@
   function draw(now) { drawScene(now, settle(currentScene(now)), 1, reduce); }
   function loop(now) {
     frame++;
-    var cursorMoving = hoverable && stepCursor();
+    var cursorMoving = hoverable && stepCursor(now);
     if (playing) drawOpening(now);
     // the drift is slow, so half the frames is plenty, except while the cursor glow is following the mouse
     else if (glide || cursorMoving || frame % 2 === 0) draw(now);
