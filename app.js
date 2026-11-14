@@ -14,7 +14,6 @@
     user: null,
     pendingSubmit: false,
     busy: false,
-    step: 0,         // which question is on screen
     started: false,  // true once the visitor clicks "Begin nomination"
     queue: [],       // screens waiting for the introduction to end
   };
@@ -34,6 +33,13 @@
   function countWords(s) {
     s = String(s || '').trim();
     return s ? s.split(/\s+/).length : 0;
+  }
+  // Same rule as countSentences_ in Code.gs: split at . ! ? (or a line break) and count pieces
+  // with at least two words, so "Dr." or "St." don't count as sentences of their own.
+  function countSentences(s) {
+    return String(s || '').split(/[.!?\u2026]+["'\u201d\u2019)\]]*(?=\s|$)|\n+/).filter(function (part) {
+      return (part.match(/[\p{L}\p{N}]+/gu) || []).length >= 2;
+    }).length;
   }
   function decodeJwt(token) {
     try {
@@ -154,11 +160,13 @@
 
   function buildQuestion(box, q, i, total) {
     var id = 'f-' + q.key;
-    var wrap = el('div', 'q');
-    wrap.tabIndex = -1;
-    var num = el('div', 'q-num', String(i + 1));
-    num.setAttribute('aria-label', 'Question ' + (i + 1) + ' of ' + total);
+    var wrap = el('section', 'q');
+    wrap.setAttribute('aria-labelledby', id + '-label');
+    var num = el('div', 'q-num', (i + 1 < 10 ? '0' : '') + (i + 1));
+    num.setAttribute('aria-hidden', 'true');
     wrap.appendChild(num);
+    var body = el('div', 'q-body');
+    wrap.appendChild(body);
 
     var label = el('label', 'q-label', q.label);
     label.id = id + '-label';
@@ -168,23 +176,24 @@
       star.setAttribute('aria-hidden', 'true');
       label.appendChild(star);
     }
-    wrap.appendChild(label);
+    body.appendChild(label);
 
     var describedBy = [];
     if (q.description) {
       var desc = el('p', 'q-desc', q.description);
       desc.id = id + '-desc';
       describedBy.push(desc.id);
-      wrap.appendChild(desc);
+      body.appendChild(desc);
     }
 
+    var limited = q.wordLimit || q.sentenceMax;
     var input;
     var choices = null;
     if (q.type === 'long text') {
-      input = el('textarea', q.wordLimit ? 'long' : '');
-      input.rows = q.wordLimit ? 7 : 4;
+      input = el('textarea', limited ? 'long' : '');
+      input.rows = limited ? 6 : 3;
     } else if (q.type === 'dropdown') {
-      // A hidden select keeps the value; the visible lettered buttons drive it.
+      // A hidden select keeps the value; the visible option buttons drive it.
       input = el('select', 'choice-source');
       input.tabIndex = -1;
       input.setAttribute('aria-hidden', 'true');
@@ -199,15 +208,15 @@
       choices = el('div', 'choices');
       choices.setAttribute('role', 'radiogroup');
       choices.setAttribute('aria-labelledby', label.id);
-      q.options.forEach(function (o, n) {
+      q.options.forEach(function (o) {
         var b = el('button', 'choice');
         b.type = 'button';
         b.setAttribute('role', 'radio');
         b.setAttribute('aria-checked', 'false');
         b.dataset.value = o;
-        b.appendChild(el('span', 'choice-key', String.fromCharCode(65 + n))).setAttribute('aria-hidden', 'true');
+        b.appendChild(el('span', 'choice-dot')).setAttribute('aria-hidden', 'true');
         b.appendChild(el('span', 'choice-text', o));
-        b.addEventListener('click', function () { pickChoice(q.key, o, true); });
+        b.addEventListener('click', function () { pickChoice(q.key, o); });
         choices.appendChild(b);
       });
     } else {
@@ -225,8 +234,8 @@
       if (q.placeholder) input.placeholder = q.placeholder;
     }
     if (q.required) (choices || input).setAttribute('aria-required', 'true');
-    wrap.appendChild(input);
-    if (choices) wrap.appendChild(choices);
+    body.appendChild(input);
+    if (choices) body.appendChild(choices);
 
     var other = null;
     if (q.type === 'dropdown' && q.options.indexOf(SELF_DESCRIBE) !== -1) {
@@ -237,20 +246,21 @@
       other.placeholder = 'Please describe';
       other.setAttribute('aria-label', q.label + ', self-description');
       other.hidden = true;
-      wrap.appendChild(other);
+      body.appendChild(other);
     }
 
     var counter = null;
-    if (q.wordLimit) {
+    if (limited) {
       counter = el('p', 'counter');
-      wrap.appendChild(counter);
+      counter.setAttribute('aria-live', 'polite');
+      body.appendChild(counter);
     }
 
     var error = el('p', 'field-error');
     error.id = id + '-err';
     describedBy.push(error.id);
     (choices || input).setAttribute('aria-describedby', describedBy.join(' '));
-    wrap.appendChild(error);
+    body.appendChild(error);
 
     controls[q.key] = { q: q, wrap: wrap, input: input, choices: choices, other: other, counter: counter, error: error };
     keys.push(q.key);
@@ -258,7 +268,7 @@
     updateCounter(q.key);
   }
 
-  // Show the hidden select's value on the lettered buttons, and the self-describe box when it applies.
+  // Show the hidden select's value on the option buttons, and the self-describe box when it applies.
   function syncChoices(key) {
     var c = controls[key];
     if (!c || !c.choices) return;
@@ -270,157 +280,63 @@
     if (c.other) c.other.hidden = c.input.value !== SELF_DESCRIBE;
   }
 
-  var advanceTimer = null;
-  function pickChoice(key, value, advance) {
+  function pickChoice(key, value) {
     var c = controls[key];
     c.input.value = value;
     syncChoices(key);
-    c.input.dispatchEvent(new Event('change', { bubbles: true }));   // clears errors and saves the draft
-    clearTimeout(advanceTimer);
-    if (value === SELF_DESCRIBE && c.other) {
-      c.other.focus();
-      return;
-    }
-    // Like Typeform: a choice moves on by itself after a beat (except on the last question).
-    if (advance && state.step < keys.length - 1) {
-      advanceTimer = setTimeout(function () {
-        if (keys[state.step] === key) next();
-      }, REDUCED_MOTION ? 150 : 420);
-    }
+    c.input.dispatchEvent(new Event('change', { bubbles: true }));   // clears errors, saves the draft, moves the progress bar
+    if (value === SELF_DESCRIBE && c.other) c.other.focus();
   }
 
-  // ---------- One question at a time ----------
-  var IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-
+  // ---------- All questions on one page ----------
   function isEmptyAnswer(key) {
     return !String(controls[key].input.value || '').trim();
   }
 
-  function showStep(i, backwards) {
+  // The bar at the top counts answered questions.
+  function updateProgress() {
     if (!keys.length) return;
-    clearTimeout(advanceTimer);
-    i = Math.max(0, Math.min(keys.length - 1, i));
-    state.step = i;
-    keys.forEach(function (k, n) {
-      var w = controls[k].wrap;
-      w.classList.toggle('is-current', n === i);
-      w.classList.toggle('from-above', n === i && !!backwards);
-      w.setAttribute('aria-hidden', n === i ? 'false' : 'true');
-    });
-    var total = keys.length;
-    var pct = Math.round(((i + 1) / total) * 100);
+    var done = keys.filter(function (k) { return !isEmptyAnswer(k); }).length;
+    var pct = Math.round((done / keys.length) * 100);
     $('progressFill').style.width = pct + '%';
     $('progress').setAttribute('aria-valuenow', String(pct));
-    $('progressText').textContent = (i + 1) + ' of ' + total;
-    $('backBtn').hidden = i === 0;
-    var last = i === total - 1;
-    $('nextBtn').hidden = last;
-    $('submitBtn').hidden = !last;
-    updateNextLabel();
-    updateHint();
+    $('progressText').textContent = done + ' of ' + keys.length + ' answered';
+  }
 
-    // Keep the question in view and put the cursor in it.
-    var top = $('nomForm').getBoundingClientRect().top;
-    if (top < 0 || top > window.innerHeight * 0.4) {
-      $('nomForm').scrollIntoView({ behavior: REDUCED_MOTION ? 'auto' : 'smooth', block: 'start' });
-    }
-    var c = controls[keys[i]];
-    var target = c.choices ? (c.choices.querySelector('.is-selected') || c.wrap) : c.input;
+  function focusQuestion(c) {
+    var target = c.choices ? (c.choices.querySelector('.is-selected') || c.choices.firstChild) : c.input;
+    c.wrap.scrollIntoView({ behavior: REDUCED_MOTION ? 'auto' : 'smooth', block: 'center' });
     try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); }
   }
 
-  // An optional question left blank says "Skip" instead of "Next".
-  function updateNextLabel() {
-    var k = keys[state.step];
-    if (!k) return;
-    var skip = !controls[k].q.required && isEmptyAnswer(k);
-    $('nextBtn').textContent = skip ? 'Skip' : 'Next';
-  }
-
-  function updateHint() {
-    var c = controls[keys[state.step]];
-    if (!c) return;
-    var last = state.step === keys.length - 1;
-    var verb = last ? 'submit' : 'continue';
-    var hint;
-    if (c.choices) hint = 'Press a letter to choose' + (last ? '' : ', <kbd>Enter &crarr;</kbd> to continue');
-    else if (c.input.tagName === 'TEXTAREA') hint = 'Press <kbd>' + (IS_MAC ? '&#8984;' : 'Ctrl') + ' + Enter &crarr;</kbd> to ' + verb;
-    else hint = 'Press <kbd>Enter &crarr;</kbd> to ' + verb;
-    $('keyHint').innerHTML = hint;
-  }
-
-  function next() {
-    var k = keys[state.step];
-    if (!k) return;
-    var msg = checkAnswer(k, collect());
-    if (msg) {
-      var e = {};
-      e[k] = msg;
-      showErrors(e, true);
-      return;
-    }
-    showErrors({});
-    saveDraftNow();
-    showStep(state.step + 1, false);
-  }
-
-  function back() {
-    if (state.step > 0) showStep(state.step - 1, true);
-  }
-
-  // After a draft is restored, pick up at the first required question still blank.
-  function resumeStep() {
-    var i;
-    for (i = 0; i < keys.length; i++) {
-      if (controls[keys[i]].q.required && isEmptyAnswer(keys[i])) return i;
-    }
-    for (i = 0; i < keys.length; i++) {
-      if (isEmptyAnswer(keys[i])) return i;
-    }
-    return keys.length - 1;
-  }
-
+  // Enter in a one-line box moves to the next question instead of sending the form early.
   function onFormKey(e) {
-    if (e.isComposing || state.busy) return;
-    var c = controls[keys[state.step]];
-    if (!c) return;
+    if (e.key !== 'Enter' || e.isComposing) return;
     var t = e.target;
-    var last = state.step === keys.length - 1;
-    var go = function () { e.preventDefault(); if (last) submit(); else next(); };
-
-    if (e.key === 'Enter') {
-      if (t.tagName === 'TEXTAREA') {
-        if (e.ctrlKey || e.metaKey) go();
-        return;                                       // plain Enter makes a new line
-      }
-      if (t.tagName === 'BUTTON' && t.type !== 'submit' && !t.classList.contains('choice')) return;   // Back, Switch account
-      if (t.classList && t.classList.contains('choice')) {
-        e.preventDefault();
-        pickChoice(c.q.key, t.dataset.value, true);
-        return;
-      }
-      if (t.tagName === 'INPUT' || t === c.wrap) go();
-      return;
-    }
-
-    // Letter keys pick a choice, unless the visitor is typing in a box.
-    if (c.choices && !e.ctrlKey && !e.metaKey && !e.altKey && /^[a-z]$/i.test(e.key) &&
-        t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA') {
-      var b = c.choices.children[e.key.toUpperCase().charCodeAt(0) - 65];
-      if (b) {
-        e.preventDefault();
-        b.focus();
-        pickChoice(c.q.key, b.dataset.value, true);
-      }
-    }
+    if (t.tagName !== 'INPUT') return;
+    e.preventDefault();
+    var i = keys.indexOf(String(t.name).replace(/Other$/, ''));
+    var nextC = controls[keys[i + 1]];
+    if (nextC) focusQuestion(nextC);
+    else $('submitBtn').focus();
   }
 
   function updateCounter(key) {
     var c = controls[key];
     if (!c || !c.counter) return;
-    var n = countWords(c.input.value);
-    c.counter.textContent = n + ' / ' + c.q.wordLimit + ' words';
-    c.counter.classList.toggle('over', n > c.q.wordLimit);
+    var q = c.q;
+    var n;
+    if (q.sentenceMax) {
+      n = countSentences(c.input.value);
+      var range = q.sentenceMin ? q.sentenceMin + '–' + q.sentenceMax : 'up to ' + q.sentenceMax;
+      c.counter.textContent = n + (n === 1 ? ' sentence' : ' sentences') + ' · ' + range + ' allowed';
+      c.counter.classList.toggle('over', n > q.sentenceMax);
+      c.counter.classList.toggle('ok', n >= q.sentenceMin && n <= q.sentenceMax && n > 0);
+    } else {
+      n = countWords(c.input.value);
+      c.counter.textContent = n + ' / ' + q.wordLimit + ' words';
+      c.counter.classList.toggle('over', n > q.wordLimit);
+    }
   }
 
   function collect() {
@@ -441,7 +357,7 @@
       syncChoices(k);
       updateCounter(k);
     });
-    updateNextLabel();
+    updateProgress();
   }
 
   function formIsEmpty() {
@@ -458,7 +374,7 @@
     showErrors({});
     $('formError').textContent = '';
     $('draftStatus').textContent = '';
-    showStep(0);
+    updateProgress();
   }
 
   // ---------- Validation ----------
@@ -473,6 +389,11 @@
       var n = countWords(v);
       if (n > q.wordLimit) return 'Please keep this to ' + q.wordLimit + ' words or fewer. It is ' + n + ' words now.';
     }
+    if (q.sentenceMax) {
+      var s = countSentences(v);
+      if (s < q.sentenceMin) return 'Please write at least ' + q.sentenceMin + ' sentences. It is ' + s + (s === 1 ? ' sentence' : ' sentences') + ' now.';
+      if (s > q.sentenceMax) return 'Please keep this to ' + q.sentenceMax + ' sentences or fewer. It is ' + s + ' sentences now.';
+    }
     return '';
   }
 
@@ -485,25 +406,18 @@
     return errs;
   }
 
-  // Marks the questions with errors. With jump, it goes to the first of them
-  // (or, when only the current one is wrong, keeps the cursor there).
+  // Marks the questions with errors. With jump, it scrolls to the first of them.
   function showErrors(errs, jump) {
-    var first = -1;
-    keys.forEach(function (k, n) {
+    var first = null;
+    keys.forEach(function (k) {
       var c = controls[k];
       var msg = errs[k] || '';
       c.error.textContent = msg;
       c.wrap.classList.toggle('invalid', !!msg);
       (c.choices || c.input).setAttribute('aria-invalid', msg ? 'true' : 'false');
-      if (msg && first < 0) first = n;
+      if (msg && !first) first = c;
     });
-    if (!jump || first < 0) return;
-    if (first !== state.step) showStep(first, first < state.step);
-    else {
-      var c = controls[keys[first]];
-      var target = c.choices ? c.wrap : c.input;
-      try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); }
-    }
+    if (jump && first) focusQuestion(first);
   }
 
   // ---------- Drafts: saved to the signed-in Google account, with a backup copy in this browser ----------
@@ -691,15 +605,11 @@
 
       show('limitNotice', false);
       show('done', false);
-      var restored = false;
-      if (formIsEmpty()) {
-        restoreDraft(res.draft);
-        restored = !formIsEmpty();
-      }
+      if (formIsEmpty()) restoreDraft(res.draft);
       show('nomForm', true);
       if (!formVisible) {
         window.scrollTo({ top: 0, behavior: REDUCED_MOTION ? 'auto' : 'smooth' });
-        showStep(restored ? resumeStep() : 0);
+        updateProgress();
       }
 
       state.pendingSubmit = false;
@@ -747,13 +657,12 @@
 
   function submit() {
     if (state.busy) return;
-    clearTimeout(advanceTimer);
     var data = collect();
     var errs = validate(data);
     showErrors(errs, true);
     if (Object.keys(errs).length) {
       var left = Object.keys(errs).length;
-      $('formError').textContent = left === 1 ? 'One question still needs an answer.' : left + ' questions still need answers. We took you to the first one.';
+      $('formError').textContent = left === 1 ? 'One question still needs an answer.' : left + ' questions still need answers. We scrolled you to the first one.';
       return;
     }
     $('formError').textContent = '';
@@ -803,7 +712,8 @@
   function nominateAnother() {
     show('done', false);
     show('nomForm', true);
-    resetForm();   // also returns to the first question
+    resetForm();
+    $('nomForm').scrollIntoView({ behavior: REDUCED_MOTION ? 'auto' : 'smooth', block: 'start' });
   }
 
   // ---------- Events ----------
@@ -817,11 +727,11 @@
       if (c.error.textContent) {
         c.error.textContent = '';
         c.wrap.classList.remove('invalid');
-        c.input.setAttribute('aria-invalid', 'false');
+        (c.choices || c.input).setAttribute('aria-invalid', 'false');
       }
     }
     $('formError').textContent = '';
-    updateNextLabel();
+    updateProgress();
     saveDraftSoon();
   }
 
@@ -832,8 +742,13 @@
     form.addEventListener('input', onFieldInput);
     form.addEventListener('change', onFieldInput);
     form.addEventListener('keydown', onFormKey);
-    $('nextBtn').addEventListener('click', next);
-    $('backBtn').addEventListener('click', back);
+    // The progress bar gets a solid background only once it is pinned to the top.
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (entries) {
+        var e = entries[0];
+        $('nfBar').classList.toggle('is-stuck', !e.isIntersecting && e.boundingClientRect.top < 0);
+      }).observe($('barSentinel'));
+    }
     $('switchBtn').addEventListener('click', switchAccount);
     beginButtons().forEach(function (b) { b.addEventListener('click', begin); });
     $('anotherBtn').addEventListener('click', nominateAnother);

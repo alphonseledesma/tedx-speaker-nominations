@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Plus+Jakarta+Sans:wght@300..700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261108">
+  <link rel="stylesheet" href="styles.css?v=20261114">
 
   <script>
     // Hide the page from the first instant while the opening plays (stage.js shows it again).
@@ -22,21 +22,21 @@
       setTimeout(function () { document.documentElement.classList.remove('is-opening'); }, 9000);
     }
   </script>
-  <script src="config.js?v=20261108"></script>
+  <script src="config.js?v=20261114"></script>
   <script src="https://accounts.google.com/gsi/client?hl=en" async defer></script>
-  <script src="stage.js?v=20261108" defer></script>
-  <script src="app.js?v=20261108" defer></script>
+  <script src="stage.js?v=20261114" defer></script>
+  <script src="app.js?v=20261114" defer></script>
 </head>
 <body>
   <!-- Living gradient field behind everything, with film grain on top -->
   <canvas class="field" id="field" aria-hidden="true"></canvas>
   <div class="grain" aria-hidden="true"></div>
 
-  <!-- Opening: a line of light opens into the striped sphere, floods the screen red, and the logo appears.
+  <!-- Opening: a line of light opens into the striped circle, its centre turns black, and the logo appears inside it.
        Plays on every visit; any key, click or tap skips it. -->
   <div class="opening" id="opening" aria-hidden="true">
     <canvas class="opening-canvas" id="openingCanvas"></canvas>
-    <img class="opening-logo" src="assets/tedx-ateneodemanilau-stacked-white.png" alt="" width="1000" height="227">
+    <img class="opening-logo" src="assets/tedx-ateneodemanilau-white.png" alt="" width="900" height="67">
     <p class="opening-skip">Tap or press any key to skip</p>
   </div>
 
@@ -122,30 +122,32 @@
         <p id="limitText"></p>
       </section>
 
-      <!-- One question at a time, Typeform style -->
-      <form class="scene tf" id="nomForm" novalidate hidden>
-        <div class="tf-progress" role="progressbar" aria-label="Form progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress">
-          <span class="tf-progress-fill" id="progressFill"></span>
+      <!-- All questions on one page -->
+      <form class="scene nf" id="nomForm" novalidate hidden>
+        <div class="nf-sentinel" id="barSentinel" aria-hidden="true"></div>
+        <div class="nf-bar" id="nfBar">
+          <div class="nf-track" role="progressbar" aria-label="Questions answered" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress">
+            <span class="nf-fill" id="progressFill"></span>
+          </div>
+          <span class="nf-count" id="progressText"></span>
         </div>
 
-        <div class="tf-fields" id="fields"></div>
+        <header class="nf-head">
+          <p class="nf-kicker">Speaker nomination</p>
+          <h2 class="nf-title">Who should we hear from?</h2>
+          <p class="nf-intro">Questions marked <span class="req">*</span> are required. Your answers save as a draft while you type, so you can close this page and finish later.</p>
+        </header>
+
+        <div class="nf-fields" id="fields"></div>
 
         <div class="reauth" id="reauth" hidden>
           <p><strong>Sign in again to submit.</strong> Your sign-in expired while you were writing. Your answers are still here.</p>
           <div class="gsi" id="gsiReauth"></div>
         </div>
 
-        <div class="tf-nav">
-          <div class="tf-actions">
-            <button type="button" class="btn btn-paper" id="nextBtn">Next</button>
-            <button type="submit" class="btn btn-paper" id="submitBtn" hidden>Submit nomination</button>
-            <span class="tf-hint" id="keyHint" aria-hidden="true"></span>
-          </div>
-          <div class="tf-meta">
-            <button type="button" class="link" id="backBtn">Back</button>
-            <span class="tf-count" id="progressText"></span>
-            <span class="draft-status" id="draftStatus" aria-live="polite"></span>
-          </div>
+        <div class="nf-submit">
+          <button type="submit" class="btn btn-paper" id="submitBtn">Submit nomination</button>
+          <span class="draft-status" id="draftStatus" aria-live="polite"></span>
         </div>
         <p class="form-error" id="formError" role="alert"></p>
       </form>

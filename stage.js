@@ -22,9 +22,11 @@
   // ------------------------------------------------------------ The striped sphere
   // Horizontal bands clipped to a circle. Hot cream and orange in the middle, red to the sides,
   // bands thickest at the equator. The stripes drift slowly downward, like a scanning light.
-  function drawSphere(ctx, cx, cy, R, t, open) {
+  // hole (0 to 1) cuts a soft black centre out of the sphere, as a share of its radius.
+  function drawSphere(ctx, cx, cy, R, t, open, hole) {
     if (R <= 0) return;
     open = open == null ? 1 : open;
+    hole = hole || 0;
     var bands = 15;
     var step = (2 * R) / bands;
     var offset = ((t * 0.012) % step + step) % step;
@@ -61,6 +63,15 @@
       g.addColorStop(1, rgba(C.wine, 0));
       ctx.fillStyle = g;
       ctx.fillRect(cx - half, yc - h / 2, half * 2, h);
+    }
+    if (hole > 0.01) {
+      var core = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
+      core.addColorStop(0, rgba(C.ink, 1));
+      core.addColorStop(Math.max(0, hole - 0.05), rgba(C.ink, 1));
+      core.addColorStop(Math.min(1, hole + 0.05), rgba(C.ink, 0));
+      core.addColorStop(1, rgba(C.ink, 0));
+      ctx.fillStyle = core;
+      ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
     }
     ctx.restore();
   }
@@ -153,14 +164,19 @@
   }
 
   // ------------------------------------------------------------ The opening
-  // A thin line of light opens into the striped sphere, which grows until the screen floods red;
-  // the centre darkens so the logo can appear, then the page fades in.
+  // A thin line of light opens into the striped circle, its centre goes black, and the circle
+  // grows just enough for the one-line logo to sit inside that black centre. The circle and
+  // the logo share the exact centre of the screen. Then the page fades in.
   var opening = document.getElementById('opening');
   var ocanvas = document.getElementById('openingCanvas');
   var ctxO = ocanvas ? ocanvas.getContext('2d') : null;
   var openingDone = true;
   var skipEvents = ['keydown', 'pointerdown', 'wheel', 'touchstart'];
-  var T = { line: 250, opened: 1500, zoom: 2300, flooded: 3200, logo: 2700, end: 4100 };   // ms
+  var T = { line: 250, opened: 1400, holeFrom: 900, holeTo: 1900, grow: 1400, grown: 2500, logo: 2300, end: 4200 };   // ms
+  var HOLE = 0.64;   // the black centre, as a share of the circle's radius
+
+  // Must match .opening-logo's width in styles.css.
+  function logoWidth() { return Math.min(window.innerWidth * 0.56, 440); }
 
   function endOpening() {
     if (openingDone) return;
@@ -172,55 +188,35 @@
     setTimeout(function () { if (opening.parentNode) opening.parentNode.removeChild(opening); }, 1050);
   }
 
+  var odpr = 1;
   function sizeOpening() {
     if (!ocanvas) return;
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    ocanvas.width = Math.round(window.innerWidth * dpr);
-    ocanvas.height = Math.round(window.innerHeight * dpr);
+    odpr = Math.min(window.devicePixelRatio || 1, 2);
+    ocanvas.width = Math.round(window.innerWidth * odpr);
+    ocanvas.height = Math.round(window.innerHeight * odpr);
   }
 
   function drawOpening(t) {
     var w = ocanvas.width, h = ocanvas.height;
     var cx = w / 2, cy = h / 2;
-    var base = Math.min(w, h) * 0.27;
     ctxO.fillStyle = rgba(C.ink, 1);
     ctxO.fillRect(0, 0, w, h);
-
-    // 1. the line opens vertically into the sphere
-    var openY = Math.max(0.012, easeInOut((t - T.line) / (T.opened - T.line)));
-    // 2. the sphere grows past the edges of the screen
-    var zoom = easeIn((t - T.zoom) / (T.flooded - T.zoom));
-    var R = base * (1 + zoom * (Math.max(w, h) / base) * 1.25);
     if (t < T.line) return;
 
-    // red flood behind, rising as the sphere grows
-    if (zoom > 0) {
-      var flood = ctxO.createRadialGradient(cx, cy, 0, cx, cy, Math.max(w, h) * 0.8);
-      flood.addColorStop(0, rgba(C.ember, 0.9 * zoom));
-      flood.addColorStop(0.6, rgba(C.wine, 0.9 * zoom));
-      flood.addColorStop(1, rgba(C.ink, 0.9 * zoom));
-      ctxO.fillStyle = flood;
-      ctxO.fillRect(0, 0, w, h);
-    }
+    // start small, then grow until the black centre is wide enough for the logo
+    var R0 = Math.min(w, h) * 0.24;
+    var R1 = Math.max(R0 * 1.25, (logoWidth() / 2 + 30) * odpr / HOLE);
+    var R = (R0 + (R1 - R0) * easeInOut((t - T.grow) / (T.grown - T.grow))) * (1 + 0.012 * Math.sin(t * 0.0011));
+    var openY = Math.max(0.012, easeInOut((t - T.line) / (T.opened - T.line)));
+    var hole = HOLE * easeInOut((t - T.holeFrom) / (T.holeTo - T.holeFrom));
 
     ctxO.save();
     ctxO.translate(cx, cy);
     ctxO.scale(1, openY);
     ctxO.translate(-cx, -cy);
-    drawSphere(ctxO, cx, cy, R, t, Math.min(1, openY * 1.2));
+    drawSphere(ctxO, cx, cy, R, t, Math.min(1, openY * 1.2), hole);
     ctxO.restore();
 
-    // 3. the centre darkens so the red of the logo still reads
-    var dark = clamp01((t - T.logo + 200) / 700);
-    if (dark > 0) {
-      var d = ctxO.createRadialGradient(cx, cy, 0, cx, cy, Math.min(w, h) * 0.55);
-      var deep = [26, 4, 8];   // a red-black, so the centre reads as shadow rather than grey haze
-      d.addColorStop(0, rgba(deep, 0.94 * dark));
-      d.addColorStop(0.5, rgba(deep, 0.72 * dark));
-      d.addColorStop(1, rgba(deep, 0));
-      ctxO.fillStyle = d;
-      ctxO.fillRect(0, 0, w, h);
-    }
     opening.style.setProperty('--logo', easeInOut((t - T.logo) / 700).toFixed(3));
   }
 
