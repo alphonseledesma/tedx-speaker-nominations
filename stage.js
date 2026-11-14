@@ -74,10 +74,12 @@
     };
   }
   function sceneAmbient() {
-    // behind the form and the privacy page: nearly all black, red only at the corners
+    // behind the form and the privacy page: mostly black, with a few faint blurs that slowly
+    // wander across the whole screen (roam), each on its own path
     return {
-      blobs: [[1.06, 0.08, 0.15, 0.18, 0.42], [1.05, 0.97, 0.12, 0.16, 0.3], [-0.06, 1.06, 0.18, 0.11, 0.26], [1.02, 0.2, 0.07, 0.05, 0.14], [0.5, 0.5, 0.05, 0.05, 0]],
-      circle: [W * 1.0, H * 0.12, Math.min(W, H) * 0.2, W < 760 ? 0 : 0.14],
+      blobs: [[0.72, 0.3, 0.13, 0.13, 0.36], [0.28, 0.72, 0.12, 0.12, 0.28], [0.55, 0.9, 0.16, 0.09, 0.3], [0.3, 0.28, 0.11, 0.045, 0.16], [0.66, 0.62, 0.06, 0.045, 0.1]],
+      circle: [W * 1.0, H * 0.12, Math.min(W, H) * 0.2, 0],
+      roam: 1,
     };
   }
   function blend(a, b, u) {
@@ -86,6 +88,7 @@
       o.blobs.push(a.blobs[i].map(function (v, k) { return lerp(v, b.blobs[i][k], u); }));
     }
     for (var k = 0; k < 4; k++) o.circle.push(lerp(a.circle[k], b.circle[k], u));
+    o.roam = lerp(a.roam || 0, b.roam || 0, u);
     return o;
   }
 
@@ -117,9 +120,12 @@
       var b = s.blobs[i];
       var a = b[4] * level;
       if (a <= 0.004) continue;
-      // each blur wanders a little on its own slow path
-      var dx = still ? 0 : Math.sin(t * 0.00011 + i * 1.7) * 0.022;
-      var dy = still ? 0 : Math.cos(t * 0.00009 + i * 2.3) * 0.018;
+      // each blur wanders on its own slow path: a little on the introduction, across the
+      // whole screen behind the form (roam)
+      var roam = s.roam || 0;
+      var sp = 0.00011 + roam * (0.00003 + i * 0.000012);
+      var dx = still ? 0 : Math.sin(t * sp + i * 1.7) * (0.022 + roam * 0.3);
+      var dy = still ? 0 : Math.cos(t * sp * 0.77 + i * 2.3) * (0.018 + roam * 0.26);
       var rx = b[2] * m, ry = b[3] * m;
       sctx.save();
       sctx.translate((b[0] + dx) * w, (b[1] + dy) * h);
@@ -140,6 +146,7 @@
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(soft, 0, 0, W, H);
+    drawCursorGlow(level);
 
     // the striped circle, faint and slightly out of focus, laid into the main blur as extra light
     var c = s.circle, ca = c[3] * level;
@@ -260,13 +267,55 @@
     if (t >= T.end) finish();
   }
 
+  // ------------------------------------------------------------ The cursor glow
+  // A soft red light that trails the mouse, a little behind it. Only on computers with a mouse or
+  // trackpad, never on touch screens, and not when someone has asked for reduced motion.
+  var hoverable = !reduce && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  var cur = { x: 0, y: 0, tx: 0, ty: 0, seen: false, on: 0, want: 0 };
+
+  function stepCursor() {
+    cur.x += (cur.tx - cur.x) * 0.09;
+    cur.y += (cur.ty - cur.y) * 0.09;
+    cur.on += (cur.want - cur.on) * 0.06;
+    return Math.abs(cur.tx - cur.x) > 0.4 || Math.abs(cur.ty - cur.y) > 0.4 || Math.abs(cur.want - cur.on) > 0.004;
+  }
+
+  function drawCursorGlow(level) {
+    if (!hoverable || !cur.seen || cur.on < 0.004) return;
+    var r = Math.max(W, H) * 0.22;
+    var a = cur.on * level;
+    var g = ctx.createRadialGradient(cur.x, cur.y, 0, cur.x, cur.y, r);
+    g.addColorStop(0, rgba([240, 92, 84], 0.34 * a));
+    g.addColorStop(0.3, rgba([220, 44, 46], 0.18 * a));
+    g.addColorStop(0.65, rgba([130, 18, 24], 0.06 * a));
+    g.addColorStop(1, rgba([120, 16, 22], 0));
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = g;
+    ctx.fillRect(cur.x - r, cur.y - r, r * 2, r * 2);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  if (hoverable) {
+    window.addEventListener('pointermove', function (e) {
+      if (e.pointerType === 'touch') return;
+      cur.tx = e.clientX;
+      cur.ty = e.clientY;
+      if (!cur.seen) { cur.x = cur.tx; cur.y = cur.ty; cur.seen = true; }
+      cur.want = 1;
+    }, { passive: true });
+    document.documentElement.addEventListener('mouseleave', function () { cur.want = 0; });
+    window.addEventListener('blur', function () { cur.want = 0; });
+  }
+
   // ------------------------------------------------------------ Loop and events
   var frame = 0;
   function draw(now) { drawScene(now, settle(currentScene(now)), 1, reduce); }
   function loop(now) {
     frame++;
+    var cursorMoving = hoverable && stepCursor();
     if (playing) drawOpening(now);
-    else if (glide || frame % 2 === 0) draw(now);     // the drift is slow: half the frames is plenty
+    // the drift is slow, so half the frames is plenty, except while the cursor glow is following the mouse
+    else if (glide || cursorMoving || frame % 2 === 0) draw(now);
     requestAnimationFrame(loop);
   }
 
