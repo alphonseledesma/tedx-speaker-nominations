@@ -7,12 +7,20 @@
   <meta name="description" content="Know someone whose ideas changed how you see things? Nominate them to speak at TEDxAteneodeManilaU.">
   <meta property="og:title" content="TEDxAteneodeManilaU Speaker Nominations">
   <meta property="og:description" content="Every great talk begins with someone noticing something that others haven't. Nominate them to speak.">
+  <!-- The picture shown when the link is shared in Messenger, Facebook, etc. -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://alphonseledesma.github.io/tedx-speaker-nominations/">
+  <meta property="og:image" content="https://alphonseledesma.github.io/tedx-speaker-nominations/assets/share.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="TEDxAteneodeManilaU Speaker Nominations">
+  <meta name="twitter:card" content="summary_large_image">
   <meta name="theme-color" content="#0b0606">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=Plus+Jakarta+Sans:wght@300..700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=20261114">
+  <link rel="stylesheet" href="styles.css?v=20261116">
 
   <script>
     // Hide the page from the first instant while the opening plays (stage.js shows it again).
@@ -22,20 +30,19 @@
       setTimeout(function () { document.documentElement.classList.remove('is-opening'); }, 9000);
     }
   </script>
-  <script src="config.js?v=20261114"></script>
+  <script src="config.js?v=20261116"></script>
   <script src="https://accounts.google.com/gsi/client?hl=en" async defer></script>
-  <script src="stage.js?v=20261114" defer></script>
-  <script src="app.js?v=20261114" defer></script>
+  <script src="stage.js?v=20261116" defer></script>
+  <script src="app.js?v=20261116" defer></script>
 </head>
 <body>
-  <!-- Living gradient field behind everything, with film grain on top -->
+  <!-- The stage: one canvas behind everything (haze, sunburst, striped circle), with film grain on top -->
   <canvas class="field" id="field" aria-hidden="true"></canvas>
   <div class="grain" aria-hidden="true"></div>
 
-  <!-- Opening: a line of light opens into the striped circle, its centre turns black, and the logo appears inside it.
+  <!-- Entrance: drawn on the stage canvas, so it flows straight into the page. This layer only holds the logo.
        Plays on every visit; any key, click or tap skips it. -->
   <div class="opening" id="opening" aria-hidden="true">
-    <canvas class="opening-canvas" id="openingCanvas"></canvas>
     <img class="opening-logo" src="assets/tedx-ateneodemanilau-white.png" alt="" width="900" height="67">
     <p class="opening-skip">Tap or press any key to skip</p>
   </div>
@@ -53,7 +60,6 @@
     <div class="scene intro" id="introScene">
 
       <section class="hero" aria-labelledby="introTitle">
-        <canvas class="orb" id="heroOrb" aria-hidden="true"></canvas>
         <h1 class="hero-title" id="introTitle">
           <span data-text="Speaker">Speaker</span>
           <span data-text="nominations">nominations</span>
@@ -64,7 +70,7 @@
         </div>
       </section>
 
-      <section class="paper about" aria-label="About TED and TEDx">
+      <section class="about" aria-label="About TED and TEDx">
         <dl class="defs">
           <div>
             <dt>TED</dt>
@@ -130,15 +136,45 @@
             <span class="nf-fill" id="progressFill"></span>
           </div>
           <span class="nf-count" id="progressText"></span>
+          <span class="nf-save" id="saveState" role="status" aria-live="polite" hidden>
+            <span class="nf-save-dot" aria-hidden="true"></span><span id="saveText"></span>
+            <button type="button" class="link" id="saveRetry" hidden>Try again</button>
+          </span>
         </div>
 
         <header class="nf-head">
           <p class="nf-kicker">Speaker nomination</p>
           <h2 class="nf-title">Who should we hear from?</h2>
-          <p class="nf-intro">Questions marked <span class="req">*</span> are required. Your answers save as a draft while you type, so you can close this page and finish later.</p>
+          <p class="nf-intro">Questions marked <span class="req">*</span> are required. Your answers save to your Google account while you type, so you can start on your phone and finish on your laptop.</p>
         </header>
 
+        <div class="notice" id="restoreNotice" hidden>
+          <p><strong>Welcome back.</strong> <span id="restoreText"></span></p>
+          <button type="button" class="link" id="restoreDismiss">Got it</button>
+        </div>
+
         <div class="nf-fields" id="fields"></div>
+
+        <div class="nf-submit">
+          <button type="submit" class="btn btn-paper" id="reviewBtn">Review nomination</button>
+          <span class="nf-clear" id="clearWrap">
+            <button type="button" class="link" id="clearBtn">Clear form</button>
+            <span class="nf-clear-ask" id="clearAsk" hidden>
+              Erase every answer?
+              <button type="button" class="link" id="clearYes">Yes, clear it</button>
+              <button type="button" class="link" id="clearNo">Keep my answers</button>
+            </span>
+          </span>
+        </div>
+        <p class="form-error" id="formError" role="alert"></p>
+      </form>
+
+      <!-- A last look before sending -->
+      <section class="scene review" id="review" hidden tabindex="-1" aria-labelledby="reviewTitle">
+        <p class="nf-kicker">One last look</p>
+        <h2 class="nf-title" id="reviewTitle">Check your nomination</h2>
+        <p class="nf-intro">Nothing is sent until you press Submit. We&rsquo;ll email a copy to <strong id="reviewEmail"></strong>.</p>
+        <dl class="review-list" id="reviewList"></dl>
 
         <div class="reauth" id="reauth" hidden>
           <p><strong>Sign in again to submit.</strong> Your sign-in expired while you were writing. Your answers are still here.</p>
@@ -146,11 +182,11 @@
         </div>
 
         <div class="nf-submit">
-          <button type="submit" class="btn btn-paper" id="submitBtn">Submit nomination</button>
-          <span class="draft-status" id="draftStatus" aria-live="polite"></span>
+          <button type="button" class="btn btn-paper" id="submitBtn">Submit nomination</button>
+          <button type="button" class="link" id="editBtn">Edit answers</button>
         </div>
-        <p class="form-error" id="formError" role="alert"></p>
-      </form>
+        <p class="form-error" id="reviewError" role="alert"></p>
+      </section>
 
       <section class="scene sheet done" id="done" hidden tabindex="-1">
         <p class="sheet-kicker">Nomination received</p>

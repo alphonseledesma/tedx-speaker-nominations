@@ -146,6 +146,7 @@
     $('limitTitle').textContent = title || 'You can no longer submit';
     $('limitText').textContent = text || '';
     show('nomForm', false);
+    show('review', false);
     show('limitNotice', true);
   }
 
@@ -318,7 +319,7 @@
     var i = keys.indexOf(String(t.name).replace(/Other$/, ''));
     var nextC = controls[keys[i + 1]];
     if (nextC) focusQuestion(nextC);
-    else $('submitBtn').focus();
+    else $('reviewBtn').focus();
   }
 
   function updateCounter(key) {
@@ -373,7 +374,9 @@
     });
     showErrors({});
     $('formError').textContent = '';
-    $('draftStatus').textContent = '';
+    setSave('');
+    show('restoreNotice', false);
+    cancelClear();
     updateProgress();
   }
 
@@ -434,9 +437,36 @@
   var draftTimer = null;     // browser copy, shortly after typing stops
   var serverTimer = null;    // account copy, a few seconds after typing stops
   var lastServerJson = '';   // what the account already has, so unchanged drafts aren't re-sent
-  var SERVER_DELAY = 3000;
+  var lastServerAt = 0;      // when the account copy was last saved
+  var SERVER_DELAY = 2500;
 
   function draftKey() { return state.user ? DRAFT_PREFIX + state.user.email : ''; }
+
+  function clock(ms) {
+    return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+  function dayAndClock(ms) {
+    return new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric' }) + ', ' + clock(ms);
+  }
+
+  // The indicator in the progress bar. It always says where the draft really is:
+  //   saving   "Saving..."
+  //   account  "Saved to your account · 2:41 PM"   (safe to continue on another device)
+  //   device   "Saved on this device only"          (the account copy could not be saved)
+  //   expired  "Saved on this device only" + a button to sign in again
+  function setSave(mode, when) {
+    var box = $('saveState');
+    box.hidden = !mode;
+    box.dataset.mode = mode;
+    var text = '';
+    if (mode === 'saving') text = 'Saving...';
+    if (mode === 'account') text = 'Saved to your account · ' + clock(when || Date.now());
+    if (mode === 'device' || mode === 'expired') text = 'Saved on this device only';
+    $('saveText').textContent = text;
+    var retry = $('saveRetry');
+    retry.hidden = !(mode === 'device' || mode === 'expired');
+    retry.textContent = mode === 'expired' ? 'Sign in again to sync' : 'Try again';
+  }
 
   function readLocalDraft() {
     if (!storage || !state.user) return null;
@@ -459,12 +489,13 @@
         else storage.setItem(draftKey(), JSON.stringify({ savedAt: Date.now(), answers: collect() }));
       } catch (e) { /* storage full or blocked: the account copy still works */ }
     }
-    if (empty) $('draftStatus').textContent = '';
+    if (empty) setSave('');
+    else if (draftJson() !== lastServerJson) setSave('saving');
     scheduleAccountSave();
   }
   function saveDraftSoon() {
     clearTimeout(draftTimer);
-    draftTimer = setTimeout(saveDraftNow, 800);
+    draftTimer = setTimeout(saveDraftNow, 700);
   }
 
   function draftJson() { return JSON.stringify(formIsEmpty() ? {} : collect()); }
@@ -477,15 +508,45 @@
 
   function saveDraftToAccount() {
     clearTimeout(serverTimer);
-    if (!state.user || state.busy || !tokenUsable()) return;
+    if (!state.user || state.busy) return;
     var json = draftJson();
-    if (json === lastServerJson) return;
+    if (json === lastServerJson) {
+      if (json !== '{}') setSave('account', lastServerAt);
+      return;
+    }
+    if (!tokenUsable()) {                 // Google sign-ins last about an hour
+      if (json !== '{}') setSave('expired');
+      return;
+    }
     var sentFor = state.user.email;
     apiPost({ action: 'saveDraft', idToken: state.token, answers: JSON.parse(json) }).then(function (res) {
-      if (!state.user || state.user.email !== sentFor || !res || !res.ok) return;
+      if (!state.user || state.user.email !== sentFor) return;
+      if (!res || !res.ok) {
+        // An AUTH reply means the sign-in ran out. Anything else usually means the Apps Script
+        // deployment is an older version that has no draft saving. Opening the web app URL in a
+        // browser shows which version is live; Code.gs explains how to deploy a new one.
+        if (res && res.code !== 'AUTH') console.warn('Draft was not saved to the account:', res);
+        if (draftJson() !== '{}') setSave(res && res.code === 'AUTH' ? 'expired' : 'device');
+        return;
+      }
       lastServerJson = json;
-      if (json !== '{}' && draftJson() === json) $('draftStatus').textContent = 'Draft saved to your Google account';
-    }).catch(function () { /* offline: the browser copy is still there and the next save retries */ });
+      lastServerAt = res.updatedAt || Date.now();
+      if (draftJson() === json) setSave(json === '{}' ? '' : 'account', lastServerAt);
+      else scheduleAccountSave();        // more was typed while this was saving
+    }).catch(function () {
+      if (draftJson() !== '{}') setSave('device');   // offline: the browser copy is still there
+    });
+  }
+
+  function retrySave() {
+    if (tokenUsable()) {
+      setSave('saving');
+      return saveDraftToAccount();
+    }
+    // sign-in ran out: bring the Google button back above the form, answers stay where they are
+    show('signin', true);
+    renderGsiButton($('gsiButton'));
+    $('signin').scrollIntoView({ behavior: REDUCED_MOTION ? 'auto' : 'smooth', block: 'center' });
   }
 
   // When the page is closed or hidden, send any unsaved draft without waiting for a reply.
@@ -499,6 +560,7 @@
     try {
       navigator.sendBeacon(CFG.API_URL, JSON.stringify({ action: 'saveDraft', idToken: state.token, answers: JSON.parse(json) }));
       lastServerJson = json;
+      lastServerAt = Date.now();
     } catch (e) { /* ignore */ }
   }
 
@@ -510,13 +572,20 @@
     var answers = useAccount ? accountDraft.answers : (local && local.answers);
     if (!answers) return;
     fill(answers);
+    if (formIsEmpty()) return;
     if (useAccount) {
       lastServerJson = draftJson();
-      $('draftStatus').textContent = 'We restored your draft from your Google account';
+      lastServerAt = accountDraft.updatedAt || Date.now();
+      $('restoreText').textContent = 'We brought back the draft saved to your Google account' +
+        (accountDraft.updatedAt ? ' on ' + dayAndClock(accountDraft.updatedAt) : '') + '. Pick up where you left off.';
+      setSave('account', lastServerAt);
     } else {
-      $('draftStatus').textContent = 'We restored your unsent draft from this device';
+      $('restoreText').textContent = 'We brought back the unsent draft saved on this device' +
+        (local.savedAt ? ' on ' + dayAndClock(local.savedAt) : '') + '. Pick up where you left off.';
+      setSave('saving');
       scheduleAccountSave();   // copy it to the account too
     }
+    show('restoreNotice', true);
   }
 
   function clearDraft() {
@@ -526,7 +595,79 @@
       try { storage.removeItem(draftKey()); } catch (e) { /* ignore */ }
     }
     lastServerJson = '{}';   // the server deletes the account draft when a nomination is submitted
-    $('draftStatus').textContent = '';
+    setSave('');
+  }
+
+  // ---------- Clear form ----------
+  function askClear() {
+    show('clearBtn', false);
+    show('clearAsk', true);
+    $('clearNo').focus();
+  }
+  function cancelClear() {
+    show('clearAsk', false);
+    show('clearBtn', true);
+  }
+  // Erases the answers here, in this browser, and in the account, so no device brings them back.
+  function clearEverything() {
+    clearTimeout(draftTimer);
+    clearTimeout(serverTimer);
+    resetForm();
+    if (storage && state.user) {
+      try { storage.removeItem(draftKey()); } catch (e) { /* ignore */ }
+    }
+    saveDraftToAccount();    // an empty draft tells the server to delete its copy
+    $('nomForm').scrollIntoView({ behavior: REDUCED_MOTION ? 'auto' : 'smooth', block: 'start' });
+  }
+
+  // ---------- Review before sending ----------
+  function answerText(k, data) {
+    var v = String(data[k] || '').trim();
+    if (v === SELF_DESCRIBE && String(data[k + 'Other'] || '').trim()) return String(data[k + 'Other']).trim();
+    return v;
+  }
+
+  function openReview() {
+    if (state.busy) return;
+    var data = collect();
+    var errs = validate(data);
+    showErrors(errs, true);
+    var left = Object.keys(errs).length;
+    if (left) {
+      $('formError').textContent = left === 1 ? 'One question still needs an answer.' : left + ' questions still need answers. We scrolled you to the first one.';
+      return;
+    }
+    $('formError').textContent = '';
+    saveDraftNow();
+
+    var list = $('reviewList');
+    list.textContent = '';
+    keys.forEach(function (k, i) {
+      var row = el('div', 'review-row');
+      row.appendChild(el('dt', null, controls[k].q.label));
+      var text = answerText(k, data);
+      row.appendChild(el('dd', text ? null : 'is-blank', text || 'Not answered'));
+      var edit = el('button', 'link review-edit', 'Edit');
+      edit.type = 'button';
+      edit.setAttribute('aria-label', 'Edit question ' + (i + 1));
+      edit.addEventListener('click', function () { closeReview(k); });
+      row.appendChild(edit);
+      list.appendChild(row);
+    });
+    $('reviewEmail').textContent = state.user ? state.user.email : '';
+    $('reviewError').textContent = '';
+    show('reauth', false);
+    show('nomForm', false);
+    show('review', true);
+    window.scrollTo({ top: 0, behavior: REDUCED_MOTION ? 'auto' : 'smooth' });
+    $('review').focus({ preventScroll: true });
+  }
+
+  function closeReview(focusKey) {
+    show('review', false);
+    show('nomForm', true);
+    if (focusKey && controls[focusKey]) focusQuestion(controls[focusKey]);
+    else $('nomForm').scrollIntoView({ behavior: REDUCED_MOTION ? 'auto' : 'smooth', block: 'start' });
   }
 
   // ---------- Google sign-in ----------
@@ -579,7 +720,8 @@
 
     var wasPending = state.pendingSubmit;
     var previousEmail = state.user ? state.user.email : '';
-    var formVisible = !$('nomForm').hidden;
+    var inReview = !$('review').hidden;
+    var formVisible = !$('nomForm').hidden || inReview;
 
     show('signin', false);
     show('reauth', false);
@@ -606,15 +748,17 @@
       show('limitNotice', false);
       show('done', false);
       if (formIsEmpty()) restoreDraft(res.draft);
-      show('nomForm', true);
+      if (!inReview) show('nomForm', true);
       if (!formVisible) {
         window.scrollTo({ top: 0, behavior: REDUCED_MOTION ? 'auto' : 'smooth' });
         updateProgress();
+      } else {
+        saveDraftToAccount();   // signed in again: sync whatever was typed meanwhile
       }
 
       state.pendingSubmit = false;
       if (wasPending && previousEmail === res.email) submit();
-      else if (wasPending) $('formError').textContent = 'You signed in with a different account. Check your answers, then press Submit.';
+      else if (wasPending) $('reviewError').textContent = 'You signed in with a different account. Check your answers, then press Submit.';
     }).catch(function (err) {
       console.error(err);
       setLoading('');
@@ -627,7 +771,7 @@
     state.token = '';
     state.tokenExp = 0;
     state.user = null;
-    ['account', 'mine', 'limitNotice', 'nomForm', 'done', 'reauth'].forEach(function (id) { show(id, false); });
+    ['account', 'mine', 'limitNotice', 'nomForm', 'review', 'done', 'reauth'].forEach(function (id) { show(id, false); });
     show('signin', true);
     $('signinError').textContent = message || '';
   }
@@ -653,19 +797,20 @@
     var btn = $('submitBtn');
     btn.disabled = on;
     btn.textContent = on ? 'Submitting...' : 'Submit nomination';
+    $('editBtn').disabled = on;
   }
 
+  // Runs from the review screen.
   function submit() {
     if (state.busy) return;
     var data = collect();
     var errs = validate(data);
-    showErrors(errs, true);
-    if (Object.keys(errs).length) {
-      var left = Object.keys(errs).length;
-      $('formError').textContent = left === 1 ? 'One question still needs an answer.' : left + ' questions still need answers. We scrolled you to the first one.';
+    if (Object.keys(errs).length) {       // should not happen after the review check, but never send a bad form
+      closeReview();
+      showErrors(errs, true);
       return;
     }
-    $('formError').textContent = '';
+    $('reviewError').textContent = '';
 
     // Google sign-in tokens last about an hour. Ask again before it runs out.
     if (!state.token || Date.now() > state.tokenExp - 60 * 1000) return askReauth();
@@ -677,6 +822,7 @@
       if (res.ok) return onSubmitted(res, data);
       if (res.code === 'AUTH') return askReauth();
       if (res.code === 'INVALID') {
+        closeReview();
         showErrors(res.errors || {}, true);
         $('formError').textContent = res.message || 'Please check this answer.';
         return;
@@ -685,11 +831,11 @@
         saveDraftNow();
         return showLimit(res.code === 'CLOSED' ? 'Nominations are closed' : 'You can no longer submit', res.message);
       }
-      $('formError').textContent = res.message || 'Something went wrong. Please try again.';
+      $('reviewError').textContent = res.message || 'Something went wrong. Please try again.';
     }).catch(function (err) {
       console.error(err);
       setBusy(false);
-      $('formError').textContent = 'We could not reach the server. Check your connection and press Submit again. Your answers are still here.';
+      $('reviewError').textContent = 'We could not reach the server. Check your connection and press Submit again. Your answers are still here.';
     });
   }
 
@@ -704,6 +850,7 @@
     $('doneRef').textContent = res.id;
     show('anotherBtn', !!res.canSubmitAgain);
     show('nomForm', false);
+    show('review', false);
     show('done', true);
     $('done').scrollIntoView({ behavior: 'smooth', block: 'start' });
     $('done').focus({ preventScroll: true });
@@ -738,7 +885,14 @@
   // ---------- Start ----------
   function boot() {
     var form = $('nomForm');
-    form.addEventListener('submit', function (e) { e.preventDefault(); submit(); });
+    form.addEventListener('submit', function (e) { e.preventDefault(); openReview(); });
+    $('submitBtn').addEventListener('click', submit);
+    $('editBtn').addEventListener('click', function () { closeReview(); });
+    $('clearBtn').addEventListener('click', askClear);
+    $('clearNo').addEventListener('click', cancelClear);
+    $('clearYes').addEventListener('click', clearEverything);
+    $('saveRetry').addEventListener('click', retrySave);
+    $('restoreDismiss').addEventListener('click', function () { show('restoreNotice', false); });
     form.addEventListener('input', onFieldInput);
     form.addEventListener('change', onFieldInput);
     form.addEventListener('keydown', onFormKey);

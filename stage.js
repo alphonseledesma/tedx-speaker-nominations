@@ -1,286 +1,307 @@
-/* Visuals for the poster direction: the living gradient field, the striped sphere, and the opening.
-   Purely visual. The form logic lives in app.js. */
+/* The stage: one full-screen canvas behind the whole site.
+   Mostly black. A few large, soft blurs of red (with a little pink and pale grey layered in)
+   drift very slowly, and a faint striped circle sits inside the main one. Everything is drawn
+   small and stretched, so every shape is out of focus and nothing has an edge.
+   The entrance uses the same canvas: the blurs fade up out of black around the logo, then
+   drift to where they rest on the page. Purely visual. The form logic lives in app.js. */
 (function () {
   'use strict';
 
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var html = document.documentElement;
+  var canvas = document.getElementById('field');
+  if (!canvas) return;
+  var ctx = canvas.getContext('2d');
 
-  var C = {
-    ink: [11, 6, 6],
-    ember: [238, 36, 54],
-    flare: [255, 91, 31],
-    wine: [79, 9, 16],
-    cream: [255, 236, 214],
-  };
-  function rgba(c, a) { return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
+  var INK = [11, 6, 6];
+  var COLORS = [
+    [226, 44, 34],     // 0 red
+    [196, 28, 30],     // 1 deeper red
+    [96, 12, 18],      // 2 wine
+    [236, 150, 146],   // 3 soft pink
+    [198, 192, 200],   // 4 pale grey
+  ];
+  var STRIPE = { hot: [255, 226, 206], mid: [255, 120, 80], red: [238, 36, 54] };
+  function rgba(c, a) { return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (a < 0 ? 0 : a) + ')'; }
   function mix(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t].map(Math.round); }
   function clamp01(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
-  function easeInOut(u) { u = clamp01(u); return u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2; }
-  function easeIn(u) { u = clamp01(u); return u * u * u; }
+  function lerp(a, b, u) { return a + (b - a) * u; }
+  function span(t, a, b) { return clamp01((t - a) / (b - a)); }
+  function ease(u) { u = clamp01(u); return u * u * u * (u * (u * 6 - 15) + 10); }   // very gentle start and stop
 
-  // ------------------------------------------------------------ The striped sphere
-  // Horizontal bands clipped to a circle. Hot cream and orange in the middle, red to the sides,
-  // bands thickest at the equator. The stripes drift slowly downward, like a scanning light.
-  // hole (0 to 1) cuts a soft black centre out of the sphere, as a share of its radius.
-  function drawSphere(ctx, cx, cy, R, t, open, hole) {
-    if (R <= 0) return;
-    open = open == null ? 1 : open;
-    hole = hole || 0;
-    var bands = 15;
+  // ------------------------------------------------------------ Sizes
+  var W = 0, H = 0;
+  var soft = document.createElement('canvas');    // the blurs: tiny, then stretched
+  var sctx = soft.getContext('2d');
+  var mid = document.createElement('canvas');     // the striped circle: small, then stretched, so it is out of focus too
+  var mctx = mid.getContext('2d');
+  var MID = 0.3;
+
+  function size() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    var dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    soft.width = Math.max(40, Math.round(W * 0.07));
+    soft.height = Math.max(40, Math.round(H * 0.07));
+    mid.width = Math.max(80, Math.round(W * MID));
+    mid.height = Math.max(80, Math.round(H * MID));
+  }
+
+  // ------------------------------------------------------------ Scenes
+  // A scene is five blurs and the circle. Blur: [x, y, width, height, strength], as shares of the
+  // screen (sizes are shares of the longer side). Blur n always uses COLORS[n].
+  // The circle: [x, y, radius in px, strength].
+  function sceneOpening() {
+    // red gathers at the edges and leaves the middle black for the logo
+    return {
+      blobs: [[0.24, 0.0, 0.17, 0.12, 0.56], [1.03, 0.44, 0.13, 0.2, 0.6], [0.46, 1.07, 0.17, 0.11, 0.5], [1.0, 0.44, 0.05, 0.07, 0], [0.5, 0.5, 0.05, 0.05, 0]],
+      circle: [W / 2, H / 2, Math.min(W, H) * 0.2, 0],
+    };
+  }
+  function sceneHero() {
+    if (W < 760) {
+      return {
+        blobs: [[0.72, 0.19, 0.21, 0.13, 0.68], [1.06, 0.52, 0.12, 0.12, 0.34], [0.0, 1.06, 0.18, 0.09, 0.3], [0.64, 0.27, 0.16, 0.055, 0.4], [0.78, 0.29, 0.07, 0.045, 0.28]],
+        circle: [W * 0.7, H * 0.22, W * 0.3, 0.3],
+      };
+    }
+    return {
+      // one large red blur on the right, a pink bar and a pale spot layered into it; the left stays black for the title
+      blobs: [[0.77, 0.28, 0.17, 0.17, 0.68], [1.04, 0.78, 0.13, 0.17, 0.36], [0.04, 1.1, 0.22, 0.11, 0.3], [0.74, 0.42, 0.15, 0.065, 0.42], [0.81, 0.45, 0.07, 0.055, 0.28]],
+      circle: [W * 0.77, H * 0.33, Math.min(W * 0.14, H * 0.22), 0.3],
+    };
+  }
+  function sceneAmbient() {
+    // behind the form and the privacy page: nearly all black, red only at the corners
+    return {
+      blobs: [[1.06, 0.08, 0.15, 0.18, 0.42], [1.05, 0.97, 0.12, 0.16, 0.3], [-0.06, 1.06, 0.18, 0.11, 0.26], [1.02, 0.2, 0.07, 0.05, 0.14], [0.5, 0.5, 0.05, 0.05, 0]],
+      circle: [W * 1.0, H * 0.12, Math.min(W, H) * 0.2, W < 760 ? 0 : 0.14],
+    };
+  }
+  function blend(a, b, u) {
+    var o = { blobs: [], circle: [] };
+    for (var i = 0; i < a.blobs.length; i++) {
+      o.blobs.push(a.blobs[i].map(function (v, k) { return lerp(v, b.blobs[i][k], u); }));
+    }
+    for (var k = 0; k < 4; k++) o.circle.push(lerp(a.circle[k], b.circle[k], u));
+    return o;
+  }
+
+  var intro = document.getElementById('introScene');
+  var rest = intro ? sceneHero : sceneAmbient;      // the scene the page is resting on
+  var glide = null;                                 // { from, to, start, ms }
+
+  function glideTo(sceneFn, ms) {
+    glide = { from: currentScene(performance.now()), to: sceneFn, start: performance.now(), ms: ms };
+    rest = sceneFn;
+  }
+  function currentScene(now) {
+    if (!glide) return rest();
+    var u = (now - glide.start) / glide.ms;
+    if (u >= 1) { glide = null; return rest(); }
+    return blend(glide.from, glide.to(), ease(u));
+  }
+
+  // ------------------------------------------------------------ Drawing
+  var scrollY = 0;
+
+  // level: overall brightness (the entrance fades it up from 0). still: no drifting (used for pictures).
+  function drawScene(t, s, level, still) {
+    var w = soft.width, h = soft.height, m = Math.max(w, h);
+    sctx.globalCompositeOperation = 'source-over';
+    sctx.fillStyle = rgba(INK, 1);
+    sctx.fillRect(0, 0, w, h);
+    for (var i = 0; i < s.blobs.length; i++) {
+      var b = s.blobs[i];
+      var a = b[4] * level;
+      if (a <= 0.004) continue;
+      // each blur wanders a little on its own slow path
+      var dx = still ? 0 : Math.sin(t * 0.00011 + i * 1.7) * 0.022;
+      var dy = still ? 0 : Math.cos(t * 0.00009 + i * 2.3) * 0.018;
+      var rx = b[2] * m, ry = b[3] * m;
+      sctx.save();
+      sctx.translate((b[0] + dx) * w, (b[1] + dy) * h);
+      sctx.scale(rx / ry, 1);
+      var g = sctx.createRadialGradient(0, 0, 0, 0, 0, ry * 1.9);
+      g.addColorStop(0, rgba(COLORS[i], a));
+      g.addColorStop(0.34, rgba(COLORS[i], a * 0.92));     // a flat, even middle like a blurred shape...
+      g.addColorStop(0.62, rgba(COLORS[i], a * 0.4));
+      g.addColorStop(1, rgba(COLORS[i], 0));               // ...and a long fall into black
+      sctx.fillStyle = g;
+      sctx.fillRect(-ry * 1.9, -ry * 1.9, ry * 3.8, ry * 3.8);
+      sctx.restore();
+    }
+
+    ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(soft, 0, 0, W, H);
+
+    // the striped circle, faint and slightly out of focus, laid into the main blur as extra light
+    var c = s.circle, ca = c[3] * level;
+    if (ca > 0.01 && c[2] > 2) {
+      mctx.setTransform(1, 0, 0, 1, 0, 0);
+      mctx.clearRect(0, 0, mid.width, mid.height);
+      drawStripes(mctx, c[0] * MID, c[1] * MID, c[2] * MID, t);
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = ca;
+      ctx.drawImage(mid, 0, 0, W, H);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+    }
+  }
+
+  // Horizontal bands of light inside a circle, warmest at the middle, drifting slowly downward.
+  // The whole circle fades out toward its rim, so it sinks into the blur around it.
+  function drawStripes(g2, cx, cy, R, t) {
+    g2.save();
+    g2.beginPath();
+    g2.arc(cx, cy, R, 0, Math.PI * 2);
+    g2.clip();
+    var bands = 13;
     var step = (2 * R) / bands;
-    var offset = ((t * 0.012) % step + step) % step;
-
-    // soft halo behind the sphere
-    var halo = ctx.createRadialGradient(cx, cy, R * 0.2, cx, cy, R * 1.6);
-    halo.addColorStop(0, rgba(C.flare, 0.28 * open));
-    halo.addColorStop(1, rgba(C.flare, 0));
-    ctx.fillStyle = halo;
-    ctx.fillRect(cx - R * 1.6, cy - R * 1.6, R * 3.2, R * 3.2);
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.clip();
+    var offset = ((t * 0.0018) % step + step) % step;
     for (var i = -1; i <= bands; i++) {
       var yc = cy - R + step * (i + 0.5) + offset;
-      var dy = (yc - cy) / R;                                   // -1 top … 1 bottom
+      var dy = (yc - cy) / R;
       if (Math.abs(dy) >= 1) continue;
       var half = Math.sqrt(1 - dy * dy) * R;
-      var pulse = 0.5 + 0.5 * Math.sin(t * 0.0013 + i * 0.6);
-      var share = (0.28 + 0.52 * (1 - Math.abs(dy)) + 0.12 * pulse) * open;
-      var h = step * Math.min(0.94, share);
-      var hot = clamp01(1 - Math.abs(dy + 0.18) * 1.15);          // hottest just above the middle
-      var core = mix(C.ember, C.cream, Math.pow(hot, 1.5));
-      var mid = mix(C.ember, C.flare, hot);
-      var g = ctx.createLinearGradient(cx - half, 0, cx + half, 0);
-      g.addColorStop(0, rgba(C.wine, 0));
-      g.addColorStop(0.16, rgba(C.ember, 0.75));
-      g.addColorStop(0.34, rgba(mid, 0.95));
-      g.addColorStop(0.5, rgba(core, 1));
-      g.addColorStop(0.66, rgba(mid, 0.95));
-      g.addColorStop(0.84, rgba(C.ember, 0.75));
-      g.addColorStop(1, rgba(C.wine, 0));
-      ctx.fillStyle = g;
-      ctx.fillRect(cx - half, yc - h / 2, half * 2, h);
+      var h = step * (0.3 + 0.3 * (1 - Math.abs(dy)));
+      var hot = clamp01(1 - Math.abs(dy) * 1.2);
+      var core = mix(STRIPE.red, STRIPE.hot, Math.pow(hot, 1.6));
+      var midc = mix(STRIPE.red, STRIPE.mid, hot);
+      var fade = 1 - Math.pow(Math.abs(dy), 2.2);                   // top and bottom bands thin out
+      var g = g2.createLinearGradient(cx - half, 0, cx + half, 0);
+      g.addColorStop(0, rgba(STRIPE.red, 0));
+      g.addColorStop(0.3, rgba(midc, 0.55 * fade));
+      g.addColorStop(0.5, rgba(core, 0.9 * fade));
+      g.addColorStop(0.7, rgba(midc, 0.55 * fade));
+      g.addColorStop(1, rgba(STRIPE.red, 0));
+      g2.fillStyle = g;
+      g2.fillRect(cx - half, yc - h / 2, half * 2, h);
     }
-    if (hole > 0.01) {
-      var core = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
-      core.addColorStop(0, rgba(C.ink, 1));
-      core.addColorStop(Math.max(0, hole - 0.05), rgba(C.ink, 1));
-      core.addColorStop(Math.min(1, hole + 0.05), rgba(C.ink, 0));
-      core.addColorStop(1, rgba(C.ink, 0));
-      ctx.fillStyle = core;
-      ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+    g2.restore();
+  }
+
+  // On the introduction, the blurs slide up and dim as the page scrolls, so the reading sections are calm.
+  function settle(s) {
+    if (rest !== sceneHero || glide || !scrollY) return s;
+    var k = clamp01(scrollY / (H * 0.9));
+    var o = blend(s, s, 0);
+    for (var i = 0; i < o.blobs.length; i++) {
+      o.blobs[i][1] -= (scrollY / H) * 0.32;
+      o.blobs[i][4] *= 1 - 0.55 * k;
     }
-    ctx.restore();
+    o.circle[1] -= scrollY * 0.32;
+    o.circle[3] *= 1 - 0.8 * k;
+    return o;
   }
 
-  // ------------------------------------------------------------ The gradient field
-  // Drawn small and stretched to full screen, so the browser's scaling blurs it into soft light.
-  var field = document.getElementById('field');
-  var fctx = field ? field.getContext('2d') : null;
-  var FW = 0, FH = 0;
-  // Mostly black: a red glow behind the sphere, a low wine glow, and a few thin red streaks.
-  var blobs = [
-    { c: C.ember, x: 0.8, y: 0.26, r: 0.42, sx: 1.3, a: 0.42, ax: 0.05, ay: 0.04, sp: 0.00011, ph: 0.0 },
-    { c: C.flare, x: 0.76, y: 0.24, r: 0.14, sx: 2.2, a: 0.22, ax: 0.06, ay: 0.03, sp: 0.00016, ph: 1.7 },
-    { c: C.wine, x: 0.12, y: 0.86, r: 0.55, sx: 1.6, a: 0.55, ax: 0.06, ay: 0.05, sp: 0.00009, ph: 3.1 },
-    // motion streaks
-    { c: C.ember, x: 0.42, y: 0.46, r: 0.035, sx: 18, a: 0.34, ax: 0.25, ay: 0.02, sp: 0.00018, ph: 0.9 },
-    { c: C.ember, x: 0.6, y: 0.64, r: 0.025, sx: 22, a: 0.26, ax: 0.3, ay: 0.02, sp: 0.00014, ph: 2.6 },
-    { c: C.flare, x: 0.7, y: 0.36, r: 0.018, sx: 24, a: 0.16, ax: 0.2, ay: 0.015, sp: 0.00024, ph: 5.0 },
-  ];
-  var scrollShift = 0;
-
-  function sizeField() {
-    if (!field) return;
-    FW = Math.max(64, Math.round(window.innerWidth * 0.12));
-    FH = Math.max(64, Math.round(window.innerHeight * 0.12));
-    field.width = FW;
-    field.height = FH;
-  }
-
-  function drawField(t) {
-    if (!fctx) return;
-    fctx.globalCompositeOperation = 'source-over';
-    fctx.fillStyle = rgba(C.ink, 1);
-    fctx.fillRect(0, 0, FW, FH);
-    fctx.globalCompositeOperation = 'screen';
-    var m = Math.max(FW, FH);
-    for (var i = 0; i < blobs.length; i++) {
-      var b = blobs[i];
-      var x = (b.x + b.ax * Math.sin(t * b.sp + b.ph)) * FW;
-      var y = (b.y + b.ay * Math.cos(t * b.sp * 1.3 + b.ph) - scrollShift * 0.35) * FH;
-      var r = b.r * m;
-      fctx.save();
-      fctx.translate(x, y);
-      fctx.scale(b.sx, 1);
-      var g = fctx.createRadialGradient(0, 0, 0, 0, 0, r);
-      g.addColorStop(0, rgba(b.c, b.a));
-      g.addColorStop(0.55, rgba(b.c, b.a * 0.35));
-      g.addColorStop(1, rgba(b.c, 0));
-      fctx.fillStyle = g;
-      fctx.fillRect(-r, -r, r * 2, r * 2);
-      fctx.restore();
-    }
-    // darken the edges so text always has somewhere to sit
-    fctx.globalCompositeOperation = 'source-over';
-    var v = fctx.createRadialGradient(FW * 0.6, FH * 0.35, Math.min(FW, FH) * 0.2, FW * 0.5, FH * 0.5, m * 0.85);
-    v.addColorStop(0, rgba(C.ink, 0));
-    v.addColorStop(1, rgba(C.ink, 0.85));
-    fctx.fillStyle = v;
-    fctx.fillRect(0, 0, FW, FH);
-  }
-
-  // ------------------------------------------------------------ The sphere in the hero
-  var orb = document.getElementById('heroOrb');
-  var octx = orb ? orb.getContext('2d') : null;
-  var orbVisible = true;
-  var pointer = { x: 0, y: 0, tx: 0, ty: 0 };
-
-  function sizeOrb() {
-    if (!orb) return;
-    var rect = orb.getBoundingClientRect();
-    var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    orb.width = Math.max(1, Math.round(rect.width * dpr));
-    orb.height = Math.max(1, Math.round(rect.height * dpr));
-  }
-
-  function drawOrb(t) {
-    if (!octx || !orbVisible) return;
-    var w = orb.width, h = orb.height;
-    octx.clearRect(0, 0, w, h);
-    pointer.x += (pointer.tx - pointer.x) * 0.05;
-    pointer.y += (pointer.ty - pointer.y) * 0.05;
-    var R = Math.min(w, h) * 0.36 * (1 + 0.015 * Math.sin(t * 0.0009));
-    drawSphere(octx, w / 2 + pointer.x * w * 0.03, h / 2 + pointer.y * h * 0.03, R, t, 1);
-  }
-
-  if (orb && 'IntersectionObserver' in window) {
-    new IntersectionObserver(function (entries) {
-      orbVisible = entries[0].isIntersecting && !orb.closest('[hidden]');
-    }).observe(orb);
-  }
-
-  // ------------------------------------------------------------ The opening
-  // A thin line of light opens into the striped circle, its centre goes black, and the circle
-  // grows just enough for the one-line logo to sit inside that black centre. The circle and
-  // the logo share the exact centre of the screen. Then the page fades in.
+  // ------------------------------------------------------------ The entrance
+  // Slow and quiet: red blurs rise out of the black at the edges of the screen, the logo comes into
+  // focus in the dark middle, and then the blurs drift across to where they rest as the page fades in.
   var opening = document.getElementById('opening');
-  var ocanvas = document.getElementById('openingCanvas');
-  var ctxO = ocanvas ? ocanvas.getContext('2d') : null;
-  var openingDone = true;
+  var playing = false;
+  var t0 = 0;
+  var revealed = false;
   var skipEvents = ['keydown', 'pointerdown', 'wheel', 'touchstart'];
-  var T = { line: 250, opened: 1400, holeFrom: 900, holeTo: 1900, grow: 1400, grown: 2500, logo: 2300, end: 4200 };   // ms
-  var HOLE = 0.64;   // the black centre, as a share of the circle's radius
+  var T = { rise: 200, risen: 2200, logoA: 900, logoB: 2300, drift: 3300, reveal: 3800, end: 5600 };   // ms
 
-  // Must match .opening-logo's width in styles.css.
-  function logoWidth() { return Math.min(window.innerWidth * 0.56, 440); }
-
-  function endOpening() {
-    if (openingDone) return;
-    openingDone = true;
-    skipEvents.forEach(function (ev) { window.removeEventListener(ev, endOpening, true); });
-    html.classList.remove('is-opening');
+  function setLogo(opacity, zoom, blur) {
     if (!opening) return;
-    opening.classList.add('is-done');
-    setTimeout(function () { if (opening.parentNode) opening.parentNode.removeChild(opening); }, 1050);
+    opening.style.setProperty('--lo', opacity.toFixed(3));
+    opening.style.setProperty('--lz', zoom.toFixed(4));
+    opening.style.setProperty('--lb', blur.toFixed(2) + 'px');
   }
 
-  var odpr = 1;
-  function sizeOpening() {
-    if (!ocanvas) return;
-    odpr = Math.min(window.devicePixelRatio || 1, 2);
-    ocanvas.width = Math.round(window.innerWidth * odpr);
-    ocanvas.height = Math.round(window.innerHeight * odpr);
-  }
-
-  function drawOpening(t) {
-    var w = ocanvas.width, h = ocanvas.height;
-    var cx = w / 2, cy = h / 2;
-    ctxO.fillStyle = rgba(C.ink, 1);
-    ctxO.fillRect(0, 0, w, h);
-    if (t < T.line) return;
-
-    // start small, then grow until the black centre is wide enough for the logo
-    var R0 = Math.min(w, h) * 0.24;
-    var R1 = Math.max(R0 * 1.25, (logoWidth() / 2 + 30) * odpr / HOLE);
-    var R = (R0 + (R1 - R0) * easeInOut((t - T.grow) / (T.grown - T.grow))) * (1 + 0.012 * Math.sin(t * 0.0011));
-    var openY = Math.max(0.012, easeInOut((t - T.line) / (T.opened - T.line)));
-    var hole = HOLE * easeInOut((t - T.holeFrom) / (T.holeTo - T.holeFrom));
-
-    ctxO.save();
-    ctxO.translate(cx, cy);
-    ctxO.scale(1, openY);
-    ctxO.translate(-cx, -cy);
-    drawSphere(ctxO, cx, cy, R, t, Math.min(1, openY * 1.2), hole);
-    ctxO.restore();
-
-    opening.style.setProperty('--logo', easeInOut((t - T.logo) / 700).toFixed(3));
-  }
-
-  function runOpening() {
-    openingDone = false;
-    html.classList.add('is-opening');
-    sizeOpening();
-    var t0 = performance.now();
-    (function frame(now) {
-      if (openingDone) return;
-      var t = now - t0;
-      drawOpening(t);
-      if (t >= T.end) return endOpening();
-      requestAnimationFrame(frame);
-    })(t0);
-    skipEvents.forEach(function (ev) {
-      window.addEventListener(ev, endOpening, { capture: true, passive: true });
-    });
-  }
-
-  if (opening && !reduce && ctxO) {
-    runOpening();
-  } else {
-    if (opening && opening.parentNode) opening.parentNode.removeChild(opening);
+  function reveal() {
+    if (revealed) return;
+    revealed = true;
     html.classList.remove('is-opening');
+    if (opening) opening.classList.add('is-leaving');
+  }
+
+  function finish() {
+    playing = false;
+    reveal();
+    skipEvents.forEach(function (ev) { window.removeEventListener(ev, skip, true); });
+    if (opening && opening.parentNode) opening.parentNode.removeChild(opening);
+  }
+
+  // Skipping moves straight to the drift, so the page still arrives in one smooth move.
+  function skip() {
+    var t = performance.now() - t0;
+    if (playing && t < T.drift) t0 = performance.now() - T.drift;
+  }
+
+  function drawOpening(now) {
+    var t = now - t0;
+    var a = sceneOpening();
+    var rise = ease(span(t, T.rise, T.risen));
+    // the blurs start a little further out and ease inward as they brighten
+    for (var i = 0; i < a.blobs.length; i++) {
+      a.blobs[i][0] = 0.5 + (a.blobs[i][0] - 0.5) * (1.14 - 0.14 * rise);
+      a.blobs[i][1] = 0.5 + (a.blobs[i][1] - 0.5) * (1.14 - 0.14 * rise);
+    }
+    var li = ease(span(t, T.logoA, T.logoB));
+    var lo = ease(span(t, T.drift, T.drift + 700));
+    setLogo(li * (1 - lo), 0.985 + 0.015 * li + 0.02 * lo, (1 - li) * 9 + lo * 6);
+
+    var s = a;
+    if (t >= T.drift) {
+      s = blend(a, sceneHero(), ease(span(t, T.drift, T.end)));
+      if (t >= T.reveal) reveal();
+    }
+    drawScene(t, s, rise, false);
+    if (t >= T.end) finish();
   }
 
   // ------------------------------------------------------------ Loop and events
-  function onScroll() {
-    var max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
-    scrollShift = window.scrollY / max;
+  var frame = 0;
+  function draw(now) { drawScene(now, settle(currentScene(now)), 1, reduce); }
+  function loop(now) {
+    frame++;
+    if (playing) drawOpening(now);
+    else if (glide || frame % 2 === 0) draw(now);     // the drift is slow: half the frames is plenty
+    requestAnimationFrame(loop);
   }
-  window.addEventListener('scroll', onScroll, { passive: true });
 
-  window.addEventListener('pointermove', function (e) {
-    if (e.pointerType === 'touch') return;
-    pointer.tx = e.clientX / window.innerWidth - 0.5;
-    pointer.ty = e.clientY / window.innerHeight - 0.5;
+  window.addEventListener('scroll', function () {
+    scrollY = window.scrollY;
+    if (reduce) draw(0);
   }, { passive: true });
 
   var resizeTimer = null;
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(function () {
-      sizeField();
-      sizeOrb();
-      if (!openingDone) sizeOpening();
-      if (reduce) { drawField(0); drawOrb(0); }
+      size();
+      if (reduce) draw(0);
     }, 120);
   });
 
-  // The hero sphere reappears when someone returns to the introduction; keep it sized.
-  document.addEventListener('stage:begin', function () { orbVisible = false; });
+  // "Begin nomination": the blurs drift out to the corners and the screen settles into black for the form.
+  document.addEventListener('stage:begin', function () {
+    scrollY = 0;
+    if (reduce) { rest = sceneAmbient; draw(0); }
+    else glideTo(sceneAmbient, 2000);
+  });
 
-  sizeField();
-  sizeOrb();
-  if (reduce) {
-    drawField(0);
-    drawOrb(0);
+  size();
+  if (reduce || !opening) {
+    if (opening && opening.parentNode) opening.parentNode.removeChild(opening);
+    html.classList.remove('is-opening');
+    if (reduce) draw(0);
+    else requestAnimationFrame(loop);
   } else {
-    (function loop(now) {
-      drawField(now);
-      drawOrb(now);
-      requestAnimationFrame(loop);
-    })(performance.now());
+    playing = true;
+    html.classList.add('is-opening');
+    t0 = performance.now();
+    skipEvents.forEach(function (ev) { window.addEventListener(ev, skip, { capture: true, passive: true }); });
+    requestAnimationFrame(loop);
   }
 })();
