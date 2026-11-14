@@ -212,6 +212,15 @@ main { position: relative; z-index: 5; }
 
 /* No panel: the words sit straight on the stage, which dims and shifts as the page scrolls */
 .about { padding: clamp(64px, 11vw, 140px) var(--gutter); }
+.about-label {
+  max-width: 1200px;
+  margin: 0 auto clamp(22px, 3vw, 36px);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ember);
+}
 .defs {
   max-width: 1200px;
   margin: 0 auto;
@@ -227,7 +236,7 @@ main { position: relative; z-index: 5; }
   font-variation-settings: "wdth" 112;
   line-height: .86;
   letter-spacing: -.045em;
-  color: var(--ember);
+  color: var(--cream);
 }
 .defs dt sup { font-size: .46em; position: relative; top: -.12em; margin-left: 2px; }
 .defs dd { margin: 0; max-width: 46ch; font-size: 17px; line-height: 1.75; color: var(--cream-soft); }
