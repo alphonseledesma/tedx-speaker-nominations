@@ -279,10 +279,10 @@
   // enlarged, so overlapping pieces melt into one uneven shape. Then each piece drifts off on its
   // own course, its lobes slowly turning and swelling, so the wisp tears apart and fades like
   // smoke. A faint glow also sits under the cursor.
-  // Only on computers with a mouse or trackpad, never on touch screens, and not when someone
-  // has asked for reduced motion.
-  var hoverable = !reduce && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-  var cur = { x: 0, y: 0, tx: 0, ty: 0, seen: false, on: 0, want: 0, lx: 0, ly: 0, carry: 0 };
+  // It follows a mouse on computers and a finger on phones (swiping or scrolling), but not when
+  // someone has asked for reduced motion. The glow under the pointer is for a mouse only.
+  var trailOn = !reduce;
+  var cur = { x: 0, y: 0, tx: 0, ty: 0, seen: false, on: 0, want: 0, lx: 0, ly: 0, carry: 0, touch: false };
   var puffs = [];
   var MAX_PUFFS = 90;
   var PUFF_COLORS = [[214, 40, 40], [196, 30, 34], [160, 24, 30], [120, 16, 24], [224, 120, 116]];
@@ -331,8 +331,9 @@
   function stepCursor(now) {
     var dt = lastStep ? Math.min(0.05, (now - lastStep) / 1000) : 0.016;
     lastStep = now;
-    cur.x += (cur.tx - cur.x) * 0.1;
-    cur.y += (cur.ty - cur.y) * 0.1;
+    var follow = cur.touch ? 0.35 : 0.1;                   // a finger is followed closely, a mouse lazily
+    cur.x += (cur.tx - cur.x) * follow;
+    cur.y += (cur.ty - cur.y) * follow;
     cur.on += (cur.want - cur.on) * 0.06;
 
     if (cur.seen && cur.want) {
@@ -366,7 +367,7 @@
   }
 
   function drawCursorGlow(level) {
-    if (!hoverable || !cur.seen) return;
+    if (!trailOn || !cur.seen) return;
     if (puffs.length) {
       var sx = trail.width / W, sy = trail.height / H;
       tctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -402,8 +403,8 @@
       ctx.globalCompositeOperation = 'screen';
       ctx.drawImage(trail, 0, 0, W, H);
     }
-    // a faint glow right under the cursor
-    if (cur.on > 0.004) {
+    // a faint glow right under the cursor (not under a finger)
+    if (cur.on > 0.004 && !cur.touch) {
       var R = Math.max(W, H) * 0.11;
       var ga = cur.on * level;
       var gl = ctx.createRadialGradient(cur.x, cur.y, 0, cur.x, cur.y, R);
@@ -417,16 +418,44 @@
     ctx.globalCompositeOperation = 'source-over';
   }
 
-  if (hoverable) {
+  // jump straight to a point (a new touch shouldn't streak across from where the last one ended)
+  function placeAt(x, y) {
+    cur.x = cur.lx = cur.tx = x;
+    cur.y = cur.ly = cur.ty = y;
+    cur.carry = 0;
+    cur.seen = true;
+  }
+
+  if (trailOn) {
     window.addEventListener('pointermove', function (e) {
-      if (e.pointerType === 'touch') return;
+      if (e.pointerType === 'touch') return;               // touches are handled below
+      if (cur.touch || !cur.seen) placeAt(e.clientX, e.clientY);
+      cur.touch = false;
       cur.tx = e.clientX;
       cur.ty = e.clientY;
-      if (!cur.seen) { cur.x = cur.lx = cur.tx; cur.y = cur.ly = cur.ty; cur.seen = true; }
       cur.want = 1;
     }, { passive: true });
     document.documentElement.addEventListener('mouseleave', function () { cur.want = 0; });
     window.addEventListener('blur', function () { cur.want = 0; });
+
+    // Phones: touch events keep arriving while the page scrolls under the finger, so the trail
+    // follows a swipe as well as a drag. Passive listeners never slow scrolling down.
+    window.addEventListener('touchstart', function (e) {
+      var t = e.touches[0];
+      if (!t) return;
+      cur.touch = true;
+      placeAt(t.clientX, t.clientY);
+      cur.want = 1;
+    }, { passive: true });
+    window.addEventListener('touchmove', function (e) {
+      var t = e.touches[0];
+      if (!t) return;
+      cur.tx = t.clientX;
+      cur.ty = t.clientY;
+    }, { passive: true });
+    var lift = function () { if (cur.touch) cur.want = 0; };
+    window.addEventListener('touchend', lift, { passive: true });
+    window.addEventListener('touchcancel', lift, { passive: true });
   }
 
   // ------------------------------------------------------------ Loop and events
@@ -434,7 +463,7 @@
   function draw(now) { drawScene(now, settle(currentScene(now)), 1, reduce); }
   function loop(now) {
     frame++;
-    var cursorMoving = hoverable && stepCursor(now);
+    var cursorMoving = trailOn && stepCursor(now);
     if (playing) drawOpening(now);
     // the drift is slow, so half the frames is plenty, except while the cursor glow is following the mouse
     else if (glide || cursorMoving || frame % 2 === 0) draw(now);
